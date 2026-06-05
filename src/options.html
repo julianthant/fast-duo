@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Duo Autopilot — Options</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --muted: #666;
+        --bg: #fafafa;
+        --card: #fff;
+        --border: #e2e2e2;
+        --accent: #0b5fff;
+        --ok: #167a3c;
+        --warn: #9a6700;
+        --err: #b00020;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e8e8e8;
+          --muted: #9a9a9a;
+          --bg: #161616;
+          --card: #1f1f1f;
+          --border: #333;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        margin: 0;
+        padding: 32px 20px 64px;
+      }
+      .wrap { max-width: 680px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 24px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+      }
+      .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+      button {
+        font: inherit;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--fg);
+        border-radius: 8px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:active { transform: translateY(1px); }
+      button + button { margin-left: 8px; }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        background: var(--bg);
+        color: var(--fg);
+        resize: vertical;
+      }
+      .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .status { margin: 0 0 12px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-weight: 600; }
+      code { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+      .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+      .pill.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+      .pill.err { background: color-mix(in srgb, var(--err) 16%, transparent); color: var(--err); }
+      .msg { margin-top: 10px; font-size: 13px; min-height: 18px; }
+      .msg.ok { color: var(--ok); }
+      .msg.warn { color: var(--warn); }
+      .msg.err { color: var(--err); }
+      .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Duo Autopilot</h1>
+      <p class="sub">Hands-off UCSD Duo MFA in your own browser.</p>
+
+      <div class="card">
+        <h2>Status</h2>
+        <p class="status" id="status">Checking…</p>
+        <div id="credTableWrap"></div>
+      </div>
+
+      <div class="card">
+        <h2>Import credential</h2>
+        <div class="row">
+          <button class="primary" id="importPackaged">Import from packaged file</button>
+          <span class="hint" id="packagedHint"></span>
+        </div>
+        <p class="hint">
+          Loads <code>credentials/duo-webauthn.json</code> from the unpacked extension folder into
+          <code>chrome.storage.local</code>. Or paste the JSON below and click Save.
+        </p>
+        <textarea id="pasteArea" placeholder='{ "credentials": [ … ] }' spellcheck="false"></textarea>
+        <div class="row" style="margin-top: 10px;">
+          <button id="savePasted">Save pasted JSON</button>
+          <button id="clearCreds">Clear stored credentials</button>
+        </div>
+        <p class="msg" id="importMsg"></p>
+      </div>
+
+      <div class="card">
+        <h2>signCount</h2>
+        <p class="hint">
+          If Duo "signs but never completes" (the prompt hangs on Touch ID), the stored counters are
+          behind Duo's view. Bump them well ahead and retry. This is the #1 first-run fix.
+        </p>
+        <div class="row">
+          <button id="resync">Resync (bump counters to 1,000,000)</button>
+        </div>
+        <p class="msg" id="resyncMsg"></p>
+      </div>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>
