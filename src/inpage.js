@@ -95,7 +95,11 @@
 
       // No matching credential, error, or timeout — defer to the real
       // authenticator so the user's other passkeys still work.
-      if (!res || !res.ok) return originalGet(options);
+      if (!res || !res.ok) {
+        console.debug("[Duo Autopilot] deferring to real get() (%s)", (res && res.reason) || "no-response");
+        return originalGet(options);
+      }
+      console.debug("[Duo Autopilot] answered Duo WebAuthn ceremony (%s)", res.transport);
 
       const credentialIdBytes = base64ToBytes(res.credentialId);
       const cred = {
