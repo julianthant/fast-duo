@@ -15,6 +15,17 @@ async function loadCredentials() {
   return Array.isArray(creds) ? creds : [];
 }
 
+/** Read autopilot settings, with everything defaulting ON. */
+async function loadSettings() {
+  const data = await chrome.storage.local.get("settings");
+  const s = data.settings || {};
+  return {
+    enabled: s.enabled !== false, // master kill switch
+    trustClick: s.trustClick !== false,
+    toast: s.toast !== false,
+  };
+}
+
 /**
  * Persist an advanced signCount monotonically. Re-reads storage so a concurrent
  * write isn't clobbered, and only ever raises the counter (never lowers it).
@@ -59,6 +70,12 @@ function pickCredential(creds, rpId, allowCredentials) {
 
 /** Core sign handler. Returns base64-encoded assertion components or {ok:false}. */
 async function handleSign(req) {
+  const settings = await loadSettings();
+  if (!settings.enabled) {
+    console.debug("[Duo Autopilot SW] autopilot disabled — deferring to normal Duo");
+    return { ok: false, reason: "disabled" };
+  }
+
   const creds = await loadCredentials();
   console.debug(
     "[Duo Autopilot SW] sign request rpId=%s allowCredentials=%d origin=%s; stored creds=%d [%s]",
@@ -108,6 +125,7 @@ async function handleSign(req) {
     credentialId: cred.credentialId, // base64
     transport: cred.transport,
     signCount: newCount,
+    toast: settings.toast, // let the shim show its on-page confirmation
   };
 }
 

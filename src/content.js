@@ -1,12 +1,14 @@
-// ISOLATED-world bridge. The MAIN-world shim (inpage.js) can't call
-// chrome.runtime directly, so this relays its sign requests to the service
-// worker and posts the response back. It carries only opaque base64 strings —
-// no key material, no crypto. (Phase 2 adds SSO autofill + trust-click here.)
+// ISOLATED-world content script on *.duosecurity.com. Two jobs:
+//   1. Bridge — relay the MAIN-world shim's sign requests to the service worker.
+//   2. Trust-click — after Duo approves, click "Yes, this is my device" so the
+//      remembered-device cookie is set and Duo prompts less often.
+// Carries only opaque base64 strings; no key material, no crypto.
 
 (() => {
   const REQ = "DUO_AUTOPILOT_REQ";
   const RES = "DUO_AUTOPILOT_RES";
 
+  // ── 1. Bridge ──
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const d = event.data;
@@ -24,4 +26,52 @@
       );
     });
   });
+
+  // ── 2. Trust-screen auto-click ──
+  // Match only the affirmative control ("Yes, this is my device" / "Yes, trust
+  // browser"), never the "No, other people use this device" one.
+  const TRUST_RE = /yes,\s*(this is my device|trust)/i;
+  let trustClicked = false;
+  let observer = null;
+
+  function findTrustControl() {
+    const sel = 'button, [role="button"], a, input[type="button"], input[type="submit"]';
+    for (const el of document.querySelectorAll(sel)) {
+      const text = (el.innerText || el.textContent || el.value || "").trim();
+      if (TRUST_RE.test(text)) return el;
+    }
+    return null;
+  }
+
+  function tryTrustClick() {
+    if (trustClicked) return;
+    const el = findTrustControl();
+    if (!el) return;
+    trustClicked = true;
+    if (observer) observer.disconnect();
+    try {
+      el.click();
+      console.debug("[Duo Autopilot] clicked trust screen (\"Yes, this is my device\")");
+    } catch (_) {}
+  }
+
+  async function startTrustWatcher() {
+    let settings = {};
+    try {
+      ({ settings = {} } = await chrome.storage.local.get("settings"));
+    } catch (_) {}
+    if (settings.enabled === false || settings.trustClick === false) return; // both default on
+
+    const begin = () => {
+      tryTrustClick(); // the screen may already be present
+      observer = new MutationObserver(() => tryTrustClick());
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      // The trust screen is transient; stop watching after a minute regardless.
+      setTimeout(() => observer && observer.disconnect(), 60000);
+    };
+    if (document.documentElement) begin();
+    else document.addEventListener("DOMContentLoaded", begin, { once: true });
+  }
+
+  startTrustWatcher();
 })();
