@@ -15,6 +15,7 @@
   const creds = navigator.credentials;
   if (!creds || typeof creds.get !== "function") return;
   const originalGet = creds.get.bind(creds);
+  console.debug("[Duo Autopilot] inpage shim installed on", location.origin);
 
   // ── tiny base64 helpers (MAIN world — no module imports available) ──
   const toU8 = (buf) => {
@@ -79,6 +80,11 @@
       const publicKey = options && options.publicKey;
       if (!publicKey || !publicKey.challenge) return originalGet(options);
       const rpId = rpIdFromOptions(publicKey);
+      console.debug(
+        "[Duo Autopilot] intercepted get() rpId=%s allowCredentials=%d",
+        rpId,
+        Array.isArray(publicKey.allowCredentials) ? publicKey.allowCredentials.length : 0,
+      );
       if (rpId !== RP_ID) return originalGet(options); // not Duo — leave it alone
 
       const challenge = bytesToBase64(publicKey.challenge);

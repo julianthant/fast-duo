@@ -60,13 +60,29 @@ function pickCredential(creds, rpId, allowCredentials) {
 /** Core sign handler. Returns base64-encoded assertion components or {ok:false}. */
 async function handleSign(req) {
   const creds = await loadCredentials();
+  console.debug(
+    "[Duo Autopilot SW] sign request rpId=%s allowCredentials=%d origin=%s; stored creds=%d [%s]",
+    req && req.rpId,
+    req && Array.isArray(req.allowCredentials) ? req.allowCredentials.length : 0,
+    req && req.origin,
+    creds.length,
+    creds.map((c) => c.transport).join(","),
+  );
   if (creds.length === 0) return { ok: false, reason: "no-credentials-loaded" };
 
   const rpId = (req && req.rpId) || RP_ID;
   if (rpId !== RP_ID) return { ok: false, reason: "rpId-not-duosecurity" };
 
   const cred = pickCredential(creds, rpId, req.allowCredentials);
-  if (!cred) return { ok: false, reason: "no-matching-credential" };
+  if (!cred) {
+    console.debug(
+      "[Duo Autopilot SW] no credential matched. allowCredentials=%o storedIds=%o",
+      req.allowCredentials,
+      creds.map((c) => c.credentialId),
+    );
+    return { ok: false, reason: "no-matching-credential" };
+  }
+  console.debug("[Duo Autopilot SW] signing with %s credential, signCount %d -> %d", cred.transport, Number(cred.signCount) || 0, (Number(cred.signCount) || 0) + 1);
 
   // Counter is load-bearing: advance and PERSIST before returning. Duo may
   // observe the new counter even if the login later fails, so persisting eagerly
