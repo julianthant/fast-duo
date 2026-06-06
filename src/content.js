@@ -5,27 +5,31 @@
 // Carries only opaque base64 strings; no key material, no crypto.
 
 (() => {
-  const REQ = "DUO_AUTOPILOT_REQ";
-  const RES = "DUO_AUTOPILOT_RES";
-
   // ── 1. Bridge ──
-  window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    const d = event.data;
-    if (!d || d.type !== REQ || typeof d.nonce !== "number") return;
+  // Relay a MAIN-world request type to the service worker and post the reply back
+  // on the matching response type. Used for both assertions (sign) and the
+  // enrollment ceremony (create) — only opaque base64 crosses here.
+  function bridge(reqType, resType, runtimeType) {
+    window.addEventListener("message", (event) => {
+      if (event.source !== window) return;
+      const d = event.data;
+      if (!d || d.type !== reqType || typeof d.nonce !== "number") return;
 
-    chrome.runtime.sendMessage({ type: "DUO_AUTOPILOT_SIGN", request: d.request }, (response) => {
-      const err = chrome.runtime.lastError;
-      window.postMessage(
-        {
-          type: RES,
-          nonce: d.nonce,
-          response: err ? { ok: false, reason: err.message } : response,
-        },
-        window.location.origin,
-      );
+      chrome.runtime.sendMessage({ type: runtimeType, request: d.request }, (response) => {
+        const err = chrome.runtime.lastError;
+        window.postMessage(
+          {
+            type: resType,
+            nonce: d.nonce,
+            response: err ? { ok: false, reason: err.message } : response,
+          },
+          window.location.origin,
+        );
+      });
     });
-  });
+  }
+  bridge("DUO_AUTOPILOT_REQ", "DUO_AUTOPILOT_RES", "DUO_AUTOPILOT_SIGN");
+  bridge("DUO_AUTOPILOT_ENROLL_REQ", "DUO_AUTOPILOT_ENROLL_RES", "DUO_AUTOPILOT_ENROLL");
 
   // ── 2. Trust-screen auto-click ──
   // Match only the affirmative control ("Yes, this is my device" / "Yes, trust

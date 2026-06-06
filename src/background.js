@@ -3,9 +3,10 @@
 // signs it, bumps the signCount, and returns only the (public, single-use)
 // assertion components. See BUILD_PLAN.md §3 and §7.
 
-import { base64ToBytes, bytesToBase64, bytesEqual, createAssertion } from "./crypto.js";
+import { base64ToBytes, bytesToBase64, bytesEqual, createAssertion, createRegistration } from "./crypto.js";
 
 const STORAGE_KEY = "duoCredentials";
+const ENROLL_KEY = "enroll";
 const RP_ID = "duosecurity.com";
 
 /** Read the enrolled credentials array from chrome.storage.local. */
@@ -129,20 +130,98 @@ async function handleSign(req) {
   };
 }
 
+/** Read the one-shot enrollment arming flag set by the options page. */
+async function loadEnroll() {
+  const data = await chrome.storage.local.get(ENROLL_KEY);
+  const e = data[ENROLL_KEY];
+  return e && typeof e === "object" ? e : { armed: false };
+}
+
+/**
+ * Registration handler. Only fires when the user has explicitly *armed*
+ * enrollment from the options page — otherwise it returns {ok:false} and the
+ * shim defers to the browser's real `create()`, so a genuine security-key
+ * registration is never hijacked. When armed, it mints a fresh credential, saves
+ * it, disarms, and returns the public attestation for the page to hand to Duo.
+ */
+async function handleEnroll(req) {
+  const enroll = await loadEnroll();
+  if (!enroll.armed) return { ok: false, reason: "not-armed" };
+
+  const rpId = (req && req.rpId) || RP_ID;
+  if (rpId !== RP_ID) return { ok: false, reason: "rpId-not-duosecurity" };
+
+  // We can only mint ES256 (P-256). If Duo's page doesn't offer it, defer.
+  const algs = Array.isArray(req.pubKeyCredParams) ? req.pubKeyCredParams.map((p) => p && p.alg) : [];
+  if (algs.length > 0 && !algs.includes(-7)) return { ok: false, reason: "no-es256-offered" };
+
+  // Prefer the transport Duo's ceremony asks for; fall back to the user's pick.
+  const att = req.authenticatorAttachment;
+  const transport =
+    att === "cross-platform" ? "usb" : att === "platform" ? "internal" : enroll.transport === "usb" ? "usb" : "internal";
+
+  const reg = await createRegistration({
+    rpId,
+    challenge: base64ToBytes(req.challenge),
+    origin: req.origin,
+    signCount: 0,
+  });
+  const credentialId = bytesToBase64(reg.credentialId);
+
+  const newCred = {
+    rpId,
+    credentialId,
+    privateKey: bytesToBase64(reg.privateKeyPkcs8),
+    userHandle: req.userHandle || null, // base64 of Duo's user.id, or null
+    signCount: 0,
+    isResidentCredential: !!req.residentKey,
+    transport,
+    deviceName: enroll.deviceName || (transport === "usb" ? "Autopilot Security Key" : "Autopilot Touch ID"),
+    enrolledAt: new Date().toISOString(),
+  };
+
+  // Append (dedupe by credentialId), then disarm so the next create() passes through.
+  const creds = (await loadCredentials()).filter((c) => c.credentialId !== credentialId);
+  creds.push(newCred);
+  await chrome.storage.local.set({ [STORAGE_KEY]: creds });
+  await chrome.storage.local.set({ [ENROLL_KEY]: { armed: false } });
+
+  console.debug("[Duo Autopilot SW] enrolled new %s credential; %d total", transport, creds.length);
+  const settings = await loadSettings();
+  return {
+    ok: true,
+    credentialId,
+    attestationObject: bytesToBase64(reg.attestationObject),
+    clientDataJSON: bytesToBase64(reg.clientDataJSON),
+    authData: bytesToBase64(reg.authData),
+    publicKeySpki: bytesToBase64(reg.publicKeySpki),
+    transport,
+    toast: settings.toast,
+  };
+}
+
 // Serialize signs so two concurrent ceremonies can't race the signCount
 // read-modify-write. Each request waits for the previous to fully settle.
 let signQueue = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.type !== "DUO_AUTOPILOT_SIGN") return undefined;
+  if (!msg || (msg.type !== "DUO_AUTOPILOT_SIGN" && msg.type !== "DUO_AUTOPILOT_ENROLL")) return undefined;
 
-  // Only honor sign requests from our content script running on the Duo host.
+  // Only honor requests from our content script running on the Duo host.
   const url = (sender && sender.url) || "";
   if (!/^https:\/\/([^/]+\.)?duosecurity\.com\//.test(url)) {
     sendResponse({ ok: false, reason: "bad-origin" });
     return false;
   }
 
+  if (msg.type === "DUO_AUTOPILOT_ENROLL") {
+    handleEnroll(msg.request)
+      .then((res) => sendResponse(res))
+      .catch((e) => sendResponse({ ok: false, reason: String((e && e.message) || e) }));
+    return true; // async sendResponse
+  }
+
+  // DUO_AUTOPILOT_SIGN — serialize through the signCount queue.
   const result = signQueue
     .then(() => handleSign(msg.request))
     .catch((e) => ({ ok: false, reason: String((e && e.message) || e) }));
