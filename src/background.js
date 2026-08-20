@@ -8,6 +8,8 @@ import { base64ToBytes, bytesToBase64, bytesEqual, createAssertion, createRegist
 const STORAGE_KEY = "duoCredentials";
 const ENROLL_KEY = "enroll";
 const RP_ID = "duosecurity.com";
+/** Credential shipped inside the unpacked folder; auto-imported when storage is empty. */
+const PACKAGED_CRED_PATH = "credentials/duo-webauthn.json";
 
 /** Read the enrolled credentials array from chrome.storage.local. */
 async function loadCredentials() {
@@ -24,8 +26,76 @@ async function loadSettings() {
     enabled: s.enabled !== false, // master kill switch
     trustClick: s.trustClick !== false,
     toast: s.toast !== false,
+    autoImport: s.autoImport !== false, // headless self-arming (see ensureProvisioned)
   };
 }
+
+// ── Headless self-arming ──────────────────────────────────────────────────
+// In an automated browser (e.g. the playwright-cli session used for selector
+// mapping) there is no Options UI to click, so the extension provisions itself:
+// when storage holds no credential yet, it imports the one packaged at
+// credentials/duo-webauthn.json (the same file the Options "Import from packaged
+// file" button reads). Best-effort and idempotent — it never overwrites a
+// credential a human already loaded, and silently no-ops if the packaged file is
+// absent (it's gitignored) or autoImport is disabled.
+
+/** Minimal validator — mirrors options.js's isValidCredential (kept in sync). */
+function isValidCredential(c) {
+  return (
+    c &&
+    typeof c === "object" &&
+    typeof c.rpId === "string" &&
+    typeof c.credentialId === "string" &&
+    typeof c.privateKey === "string" &&
+    typeof c.signCount === "number" &&
+    (c.transport === "internal" || c.transport === "usb")
+  );
+}
+
+function extractCredentials(parsed) {
+  const arr = Array.isArray(parsed)
+    ? parsed
+    : parsed && Array.isArray(parsed.credentials)
+    ? parsed.credentials
+    : null;
+  return arr ? arr.filter(isValidCredential) : [];
+}
+
+async function autoImportPackagedCredential() {
+  try {
+    const settings = await loadSettings();
+    if (settings.autoImport === false) return; // explicit opt-out
+    if ((await loadCredentials()).length > 0) return; // already armed by a human
+    const resp = await fetch(chrome.runtime.getURL(PACKAGED_CRED_PATH));
+    if (!resp.ok) return; // no packaged file in this build
+    const creds = extractCredentials(await resp.json());
+    if (creds.length === 0) return;
+    // Resync signCount ahead of Duo's server-observed value, or Duo rejects the
+    // assertion as a cloned key and the prompt just hangs (README "signs but
+    // never completes"). A FIXED bump (e.g. 1,000,000) would collide on the next
+    // fresh profile — the counter must strictly increase across sessions. The
+    // current unix time (seconds) is monotonic across fresh loads, always ahead
+    // of Duo's view, and fits uint32 until 2106.
+    const nowSec = Math.floor(Date.now() / 1000);
+    for (const c of creds) c.signCount = Math.max(Number(c.signCount) || 0, nowSec);
+    await chrome.storage.local.set({ [STORAGE_KEY]: creds });
+    console.debug("[Duo Autopilot SW] auto-imported %d packaged credential(s), signCount synced to %d", creds.length, nowSec);
+  } catch (e) {
+    console.debug("[Duo Autopilot SW] auto-import skipped:", (e && e.message) || e);
+  }
+}
+
+// Run once per worker lifetime; sign handling awaits this so the first ceremony
+// can't race an empty store. The SW may be torn down and restarted in MV3, so we
+// also re-trigger on install/startup.
+let provisionPromise = null;
+function ensureProvisioned() {
+  if (!provisionPromise) provisionPromise = autoImportPackagedCredential();
+  return provisionPromise;
+}
+chrome.runtime.onInstalled.addListener(() => void ensureProvisioned());
+chrome.runtime.onStartup.addListener(() => void ensureProvisioned());
+void ensureProvisioned();
 
 /**
  * Persist an advanced signCount monotonically. Re-reads storage so a concurrent
@@ -71,6 +141,7 @@ function pickCredential(creds, rpId, allowCredentials) {
 
 /** Core sign handler. Returns base64-encoded assertion components or {ok:false}. */
 async function handleSign(req) {
+  await ensureProvisioned(); // headless self-arming completes before we read storage
   const settings = await loadSettings();
   if (!settings.enabled) {
     console.debug("[Duo Autopilot SW] autopilot disabled — deferring to normal Duo");

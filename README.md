@@ -68,6 +68,55 @@ No build step — it's plain MV3 JavaScript.
 
 You'll see the status hero: **No credential** until you set one up.
 
+## Headless / automated use (playwright-cli)
+
+This extension is part of the **hr-automation** repo so it can clear Duo inside an
+automated browser — specifically the `playwright-cli` session used for headless
+selector mapping against UCSD's auth-gated systems. There is no Options UI to
+click in that browser, so the extension **self-arms**: on service-worker startup,
+when storage holds no credential, it imports the one packaged at
+`credentials/duo-webauthn.json` (the same file the Options "Import from packaged
+file" button reads). Gated so it never overwrites a human-loaded credential, and a
+silent no-op when the file is absent (it's gitignored) or `autoImport` is off.
+
+On auto-import the `signCount` is stamped to the current unix time (seconds) if
+the packaged value is lower. **`npm run sel:browser` therefore wipes
+`.auth/<session>-profile` on every launch** (2026-08-20): a profile reused
+across days keeps the extension's stored counter, which Duo has already seen,
+and the next assertion fails as a cloned key (`passkey → auth_fail`, "Couldn't
+use security key — canceled or timed out"). A fresh profile re-imports with a
+fresh timestamp and the login clears hands-off again (verified 2026-08-20). This is the automated equivalent of "Resync
+signCount": the packaged counter is usually far behind Duo's server-observed
+value, so without it Duo rejects the first assertion as a cloned key and the
+prompt hangs. A unix timestamp is monotonic across fresh browser profiles (a
+fixed bump like 1,000,000 would collide on the second headless session) and stays
+ahead of Duo's view. Verified end-to-end against a live UCPath login 2026-06-25.
+
+From the repo root:
+
+```bash
+playwright-cli install-browser chromium      # one-time: full Chromium (supports --load-extension)
+npm run sel:browser -- <login-url>           # opens session 'sel' headless with the extension loaded
+# …fill SSO username/password (e.g. from .env); the extension answers the Duo prompt itself…
+playwright-cli -s=sel snapshot               # map selectors on deep, auth-gated pages
+playwright-cli -s=sel close
+```
+
+`npm run sel:browser` (→ `launch-selector-browser.mjs`) generates a gitignored
+`.playwright/duo-autopilot.config.json` that loads this folder via
+`--load-extension`, then opens a persistent-context session (extensions require a
+persistent context). It uses Playwright's **full** bundled Chromium
+(`channel: chromium`, new headless) because Google Chrome stable disabled
+`--load-extension` in 2024 and the lightweight `headless-shell` can't run
+extensions. The extension only answers the **Duo MFA** step — you still fill the
+SSO username/password yourself.
+
+> **Chromium install under Node 26:** `playwright-cli install-browser chromium`
+> hangs in Playwright's zip extractor right before the ~230MB framework. Workaround:
+> `curl` the CfT zip (URL is printed by the install command) and extract with macOS
+> `ditto -x -k <zip> ~/Library/Caches/ms-playwright/chromium-<rev>/`, then
+> `touch …/INSTALLATION_COMPLETE …/DEPENDENCIES_VALIDATED`.
+
 ---
 
 ## Getting a credential
@@ -172,10 +221,13 @@ duo-autopilot/
   src/
     inpage.js            MAIN world — overrides navigator.credentials.get/.create
     content.js           ISOLATED — message bridge + "trust this device" auto-click
-    background.js        service worker — holds the key, signs, mints credentials
+    background.js        service worker — holds the key, signs, mints credentials,
+                         and auto-imports the packaged credential when storage is empty
     crypto.js            byte-exact WebAuthn helpers (assertion + registration + CBOR)
     options.html / .js   status, toggles, and the enrollment / import flow
   credentials/           GITIGNORED — your private key, never committed
+  launch-selector-browser.mjs  opens a headless playwright-cli session with the
+                         extension loaded (npm run sel:browser, from the repo root)
   test/crypto.test.mjs   offline self-test (run: npm test)
   BUILD_PLAN.md          the full design spec
 ```
