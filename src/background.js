@@ -1,15 +1,18 @@
 import { createService } from './service.js';
 import { isDuoOrigin } from './accounts.js';
+import { preparePrivateStorage } from './private-storage.js';
 
-const service = createService(chrome.storage.local);
+let service;
+const stateEvents = new BroadcastChannel('duo-autopilot-state');
 const ready = (async () => {
-  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  const storage = await preparePrivateStorage(chrome);
+  service = createService(storage);
   const response = await fetch(chrome.runtime.getURL('bootstrap.json'));
   if (!response.ok) throw new Error('Missing bootstrap configuration. Reinstall the extension package.');
   const bootstrap = await response.json();
   // Only the personal folder specifies a credential file. The shareable build does not.
   if (bootstrap.credentialFile) {
-    const existing = await chrome.storage.local.get('autopilotV1');
+    const existing = await storage.get('autopilotV1');
     if (!existing.autopilotV1) {
       if (bootstrap.credentialFile !== 'credentials/duo-webauthn.json') throw new Error('Unexpected credential file.');
       const credentials = await fetch(chrome.runtime.getURL(bootstrap.credentialFile));
@@ -39,7 +42,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       data.tabUrl = tab.url; // Bind to browser-observed state, not a UI-supplied URL.
     }
     const mapped = { DUO_AUTOPILOT_SIGN: 'SIGN', DUO_AUTOPILOT_ENROLL: 'ENROLL', DUO_SETTINGS: 'SETTINGS' }[type] || type;
-    return service.run(mapped, data, sender);
+    const result = await service.run(mapped, data, sender);
+    if (!['STATE', 'SETTINGS'].includes(mapped)) stateEvents.postMessage({ type: 'STATE_CHANGED' });
+    return result;
   })().then(result => sendResponse({ success: true, result })).catch(error => sendResponse({ success: false, error: error.name === 'Error' ? error.message : 'The request could not complete. Check the account details or reload the extension.' }));
   return true;
 });

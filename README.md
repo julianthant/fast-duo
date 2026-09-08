@@ -1,6 +1,6 @@
 # Duo Autopilot
 
-A standalone Manifest V3 Chrome extension with separate Duo accounts, exact key
+A standalone Manifest V3 Chrome and Safari extension with separate Duo accounts, exact key
 matching, a toolbar popup, and guided personal enrollment. Runtime is plain local
 JavaScript; no build or server is required.
 
@@ -21,6 +21,16 @@ device in Duo. The key is generated and linked locally. Finish in Duo and confir
 its success here, or complete a matching test login to activate it automatically.
 Duo's WebAuthn registration username must match the account exactly. If Duo uses
 an email address, edit the account to that exact name before retrying.
+
+## Safari
+
+Run `npm run package:safari:personal` for your private Safari app, including the
+two existing keys for **juzaw** and the **jzaw** profile awaiting setup. Open
+`dist/safari-personal/Duo Autopilot.app`, then enable it in Safari Settings.
+This local build requires Allow unsigned extensions and permission for your Duo
+site. See [SAFARI.md](SAFARI.md) for installation and clean distribution builds.
+
+Chrome and Safari keep separate storage and counters; changes do not sync.
 
 ## Account matching
 
@@ -57,8 +67,11 @@ and approval; this project has not been submitted or published.
 
 ## Local storage and removal
 
-Private keys remain in trusted extension contexts, using `chrome.storage.local`
-with `TRUSTED_CONTEXTS` access. Content scripts receive only per-request public
+Private keys remain in trusted extension contexts. Chrome 140+ uses
+`chrome.storage.local` with `TRUSTED_CONTEXTS` access. Safari 18+ uses IndexedDB
+owned by the extension background because Safari cannot restrict `storage.local`.
+Safari migration verifies the private copy before deleting old shared storage;
+conflicts or failed writes block startup without discarding either copy. Content scripts receive only per-request public
 results and non-secret settings. Keys never appear in page scripts, UI responses,
 activity history, or share archives. Your personal credential file is owner-readable
 only, and both it and personal bootstrap are Git-ignored.

@@ -1,4 +1,7 @@
 const $ = id => document.getElementById(id);
+if (chrome.runtime.getURL('').startsWith('safari-web-extension://')) {
+  $('installInstructions').textContent = 'Open the Safari app package, then enable Duo Autopilot in Safari Settings → Extensions. This local build needs Allow unsigned extensions in Developer settings. Allow access to your Duo site, then reload the Duo page.';
+}
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 let state;
 let selectedId = null;
@@ -143,9 +146,11 @@ $('importKeys').addEventListener('click', () => action($('importKeys'), async ()
   await mutate('IMPORT',{accountId:selectedId,parsed}); $('importFile').value=''; message('Keys imported for this account.');
 }));
 $('linkLegacy').addEventListener('click', () => action($('linkLegacy'), () => mutate('LINK_LEGACY',{accountId:$('legacyOwner').value})));
-chrome.storage.onChanged.addListener((changes,area) => {
-  if (area === 'local' && changes.autopilotV1) void refresh().catch(error => message(error.message,true));
+const stateEvents = new BroadcastChannel('duo-autopilot-state');
+stateEvents.addEventListener('message', event => {
+  if (event.data?.type === 'STATE_CHANGED') void refresh().catch(error => message(error.message,true));
 });
+window.addEventListener('focus', () => { if (state) void refresh().catch(error => message(error.message,true)); });
 async function refresh() { state = await request('STATE'); render(); }
 await refresh().catch(error => { $('globalStatus').textContent='Could not load accounts'; $('globalDetail').textContent='Reload the extension, then reopen this page.'; message(error.message,true); $('addAccount').disabled=true; });
 setInterval(() => { if (state?.enrollment && state.enrollment.expiresAt <= Date.now()) void refresh().catch(error => message(error.message,true)); },1000);

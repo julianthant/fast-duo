@@ -1,5 +1,8 @@
 # Install Duo Autopilot
 
+These steps are for Chrome 140+. Safari users need the Safari app package and
+its included INSTALL.md. Both browsers use the same personal enrollment flow.
+
 1. Unzip `duo-autopilot-share.zip` into a permanent folder.
 2. Open `chrome://extensions`, enable Developer mode, and choose Load unpacked.
 3. Select the folder containing `manifest.json`. Keep the folder in place.
@@ -13,7 +16,7 @@ Repeat for each account. Your organization must allow the chosen device type and
 
 Use the toolbar icon to pause or open settings. Keys stay in local extension storage. There is no cloud synchronization, analytics, or automatic backup. Removing the extension removes its browser storage; keep another Duo method available.
 
-This package contains no pre-enrolled credentials. Every person enrolls their own. Never share a personal installation folder containing `credentials/`. An unlocked Chrome profile can use all of its connected accounts.
+This package contains no pre-enrolled credentials. Every person enrolls their own. Never share a personal installation folder containing `credentials/`. An unlocked browser profile can use all of its connected accounts.
 
 Matching uses Duo's credential IDs and exact visible username fields. Unknown or ambiguous requests fall through to normal browser authentication. Username detection depends on the Duo page exposing a supported field; it does not read SSO pages on other domains.
 
