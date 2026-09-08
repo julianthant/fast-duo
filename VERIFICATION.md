@@ -16,7 +16,7 @@ Verified locally on September 7, 2026, using isolated full Chromium contexts.
 | Contrast | Light body 13.74:1; light helper 5.84:1; light button 6.70:1; dark equivalents above 8.6:1 |
 | Design detector | No findings |
 | Browser console | No errors or warnings in verified contexts |
-| Share archive | Exact 24-file allowlist; every decompressed entry checked for personal private keys and usernames; none found |
+| Share archive | Exact 25-file allowlist; every decompressed entry checked for personal private keys and usernames; none found |
 | Cleanup | Owned browsers closed and isolated profiles removed |
 
 Core coverage does not represent UI-script coverage. Username extraction runs in
@@ -31,3 +31,14 @@ The jzaw account still requires its owner's real enrollment through Duo.
 
 Chrome Web Store publication is a separate deployment and has not occurred.
 No changes were pushed or integrated into the HR repositories.
+
+## Logo correction
+
+All four PNG sizes were decoded to verify RGBA format, exact square dimensions,
+zero alpha at each corner, and a nontransparent bounding box reaching all four
+canvas edges (no external padding). Settings and popup renders were inspected in
+light/dark contexts; the logo has no theme filter. ESLint and package verification
+passed. Authentication code was unchanged; prior functional results above are
+reused for this asset-only correction.
+
+After-shot: `verification/logo-transparency.png`.

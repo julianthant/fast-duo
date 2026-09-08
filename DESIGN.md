@@ -20,3 +20,29 @@ Account status distinguishes connected, paused, missing setup, and pending Duo
 confirmation. A generated key is not claimed to be registered until the user
 confirms Duo's success or Duo requests its exact credential ID. No decorative
 motion, remote fonts, analytics, or external runtime libraries.
+
+## Logo source and exports
+
+`src/icons/autopilot.svg` is the single logo source: a forest-green rounded square
+with a white vector `d.` mark. The options header and popup use the SVG directly,
+without theme filters or CSS backgrounds. Chrome icons are RGBA PNG exports at
+exactly 16, 32, 48 and 128 pixels. Outside the rounded silhouette is transparent;
+there is no padded rectangle around it.
+
+To regenerate, serve only the public source directory in one terminal:
+
+```
+python3 -m http.server 8769 --bind 127.0.0.1 --directory src
+```
+
+From the project root, use another terminal:
+
+```
+playwright-cli -s=duo-icons open http://127.0.0.1:8769/icons/autopilot.svg
+playwright-cli -s=duo-icons run-code --filename=scripts/render-icons.js
+playwright-cli -s=duo-icons close
+npm run package
+```
+
+Stop the temporary HTTP server afterward. Render on a transparent HTML document;
+screenshotting a logo within the app bakes the app background into its corners.
