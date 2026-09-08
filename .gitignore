@@ -12,3 +12,5 @@ dist/
 .playwright-cli/
 verification/
 artifacts/
+bootstrap.json
+verified-options.png

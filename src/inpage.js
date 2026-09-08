@@ -107,18 +107,18 @@
         el.style.opacity = "0";
         setTimeout(() => el.remove(), 400);
       }, 3000);
-    } catch (_) {}
+    } catch { /* Optional browser presentation API is unavailable. */ }
   }
 
-  // Default rpId per WebAuthn is the caller's effective registrable domain; on
-  // *.duosecurity.com that is "duosecurity.com".
+  // WebAuthn defaults rpId to the caller’s effective domain (the full hostname).
   function rpIdFromOptions(publicKey) {
     if (publicKey.rpId) return publicKey.rpId;
-    return location.hostname.split(".").slice(-2).join(".");
+    return location.hostname;
   }
 
   navigator.credentials.get = async function (options) {
     try {
+      if (options?.signal?.aborted) throw new DOMException("Request aborted", "AbortError");
       const publicKey = options && options.publicKey;
       if (!publicKey || !publicKey.challenge) return originalGet(options);
       const rpId = rpIdFromOptions(publicKey);
@@ -143,12 +143,12 @@
 
       // No matching credential, error, or timeout — defer to the real
       // authenticator so the user's other passkeys still work.
-      if (!res || !res.ok) {
+      if (!res || !res.ok || options?.signal?.aborted) {
         console.debug("[Duo Autopilot] deferring to real get() (%s)", (res && res.reason) || "no-response");
         return originalGet(options);
       }
       console.debug("[Duo Autopilot] answered Duo WebAuthn ceremony (%s)", res.transport);
-      if (res.toast) showToast("Duo Autopilot approved");
+      if (res.toast) showToast("Duo Autopilot answered");
 
       const credentialIdBytes = base64ToBytes(res.credentialId);
       const cred = {
@@ -168,12 +168,12 @@
       // so a missing global never breaks the assertion.
       try {
         Object.setPrototypeOf(cred.response, AuthenticatorAssertionResponse.prototype);
-      } catch (_) {}
+      } catch { /* Optional browser presentation API is unavailable. */ }
       try {
         Object.setPrototypeOf(cred, PublicKeyCredential.prototype);
-      } catch (_) {}
+      } catch { /* Optional browser presentation API is unavailable. */ }
       return cred;
-    } catch (_) {
+    } catch {
       return originalGet(options);
     }
   };
@@ -188,10 +188,11 @@
   if (originalCreate) {
     navigator.credentials.create = async function (options) {
       try {
-        const publicKey = options && options.publicKey;
+        if (options?.signal?.aborted) throw new DOMException("Request aborted", "AbortError");
+      const publicKey = options && options.publicKey;
         if (!publicKey || !publicKey.challenge) return originalCreate(options);
         const rp = publicKey.rp || {};
-        const rpId = rp.id || location.hostname.split(".").slice(-2).join(".");
+        const rpId = rp.id || location.hostname;
         if (rpId !== RP_ID) return originalCreate(options); // not Duo — leave it alone
 
         const user = publicKey.user || {};
@@ -201,6 +202,7 @@
           origin: location.origin,
           challenge: bytesToBase64(publicKey.challenge),
           userHandle: user.id ? bytesToBase64(user.id) : null,
+          username: typeof user.name === "string" ? user.name : "",
           pubKeyCredParams: Array.isArray(publicKey.pubKeyCredParams)
             ? publicKey.pubKeyCredParams.map((p) => ({ type: p.type, alg: p.alg }))
             : [],
@@ -209,12 +211,12 @@
         });
 
         // Not armed, unsupported, or timed out — let the real authenticator handle it.
-        if (!res || !res.ok) {
+        if (!res || !res.ok || options?.signal?.aborted) {
           console.debug("[Duo Autopilot] deferring to real create() (%s)", (res && res.reason) || "no-response");
           return originalCreate(options);
         }
         console.debug("[Duo Autopilot] captured Duo enrollment (%s)", res.transport);
-        if (res.toast) showToast("Duo Autopilot enrolled this credential");
+        if (res.toast) showToast("Key captured. Finish setup in Duo.");
 
         const credentialIdBytes = base64ToBytes(res.credentialId);
         const cred = {
@@ -234,12 +236,12 @@
         };
         try {
           Object.setPrototypeOf(cred.response, AuthenticatorAttestationResponse.prototype);
-        } catch (_) {}
+        } catch { /* Optional browser presentation API is unavailable. */ }
         try {
           Object.setPrototypeOf(cred, PublicKeyCredential.prototype);
-        } catch (_) {}
+        } catch { /* Optional browser presentation API is unavailable. */ }
         return cred;
-      } catch (_) {
+      } catch {
         return originalCreate(options);
       }
     };
@@ -252,5 +254,5 @@
     if (window.PublicKeyCredential) {
       window.PublicKeyCredential.isExternalCTAP2SecurityKeySupported = () => Promise.resolve(true);
     }
-  } catch (_) {}
+  } catch { /* Optional browser presentation API is unavailable. */ }
 })();
