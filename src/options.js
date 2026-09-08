@@ -1,159 +1,167 @@
-const STORAGE_KEY = "duoCredentials";
-const SETTINGS_KEY = "settings";
-
-const $ = (id) => document.getElementById(id);
-
-// ── inline SVG icons (single family, 1.8 stroke) for JS-rendered rows ──
-const svg = (paths) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-const SHIELD = '<path d="M12 3 5 6v5c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/>';
-const ICONS = {
-  shieldCheck: svg(SHIELD + '<path d="m9 12 2 2 4-4"/>'),
-  shieldSlash: svg(SHIELD + '<path d="m9.5 9.5 5 5"/><path d="m14.5 9.5-5 5"/>'),
-  shieldAlert: svg(SHIELD + '<path d="M12 8v3.5"/><path d="M12 15h.01"/>'),
-  fingerprint: svg(
-    '<path d="M12 10a2 2 0 0 0-2 2c0 1.5-.2 3.4-.6 4.8"/>' +
-      '<path d="M8.5 7.5A5 5 0 0 1 16 12c0 1 .1 2.2.3 3.2"/>' +
-      '<path d="M6.5 12a5.5 5.5 0 0 1 .8-3"/>' +
-      '<path d="M12 6a6 6 0 0 1 6 6c0 .8 0 2 .2 3"/>' +
-      '<path d="M13.5 19c.3-1.2.5-2.8.5-4"/>',
-  ),
-  key: svg('<circle cx="8" cy="8" r="5"/><path d="m11.5 11.5 9.5 9.5"/><path d="m16.5 16.5 2-2"/><path d="m19 19 1.5-1.5"/>'),
-};
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (ch) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]),
-  );
+const $ = id => document.getElementById(id);
+if (chrome.runtime.getURL('').startsWith('safari-web-extension://')) {
+  $('installInstructions').textContent = 'Open the Safari app package, then enable Duo Autopilot in Safari Settings → Extensions. This local build needs Allow unsigned extensions in Developer settings. Allow access to your Duo site, then reload the Duo page.';
 }
-
-function setMsg(el, text, kind) {
-  el.textContent = text;
-  el.className = "msg" + (kind ? " " + kind : "");
-  if (kind === "err") el.setAttribute("role", "alert");
-  else el.removeAttribute("role");
+const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+let state;
+let selectedId = null;
+let removeConfirmation = null;
+async function request(type, data = {}) {
+  const response = await chrome.runtime.sendMessage({ type, data });
+  if (!response?.success) throw new Error(response?.error || 'The extension did not respond. Reload this page.');
+  return response.result;
 }
-
-// ── storage helpers ──
-async function loadStored() {
-  const data = await chrome.storage.session.get(STORAGE_KEY);
-  return Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
+function message(text, error = false) {
+  $('message').textContent = text;
+  $('message').className = 'notice' + (error ? ' error' : '');
+  $('message').hidden = !text;
+  $('message').setAttribute('role', error ? 'alert' : 'status');
 }
-async function loadSettings() {
-  const data = await chrome.storage.local.get(SETTINGS_KEY);
-  const s = data[SETTINGS_KEY] || {};
-  return { enabled: s.enabled !== false, trustClick: s.trustClick !== false, toast: s.toast !== false };
+async function action(button, work) {
+  button.disabled = true;
+  try { await work(); } catch (error) { message(error.message, true); }
+  finally { button.disabled = false; if (state && button.id === "startCapture") renderConnection(); }
 }
-async function saveSettings(patch) {
-  const next = { ...(await loadSettings()), ...patch };
-  await chrome.storage.local.set({ [SETTINGS_KEY]: next });
-  return next;
+function render() {
+  const usable = state.credentials.filter(c => c.status === 'ready' && state.accounts.some(a => a.id === c.accountId && a.enabled));
+  $('globalStatus').textContent = !state.settings.enabled ? 'Autopilot is paused' : usable.length ? 'Autopilot is active' : 'Ready when you are';
+  $('globalDetail').textContent = !state.settings.enabled ? 'Your keys are saved. Duo uses your usual authentication method.' : usable.length ? 'Watching for matching Duo logins in this browser.' : 'Connect an account to start automatic Duo authentication.';
+  $('pause').textContent = state.settings.enabled ? 'Pause' : 'Resume';
+  $('pause').disabled = false;
+  $('accountCount').textContent = `${state.accounts.length} ${state.accounts.length === 1 ? 'account' : 'accounts'}`;
+  $('accountList').setAttribute('aria-busy','false');
+  $('accountList').innerHTML = state.accounts.length ? state.accounts.map(a => {
+    const keys = state.credentials.filter(c => c.accountId === a.id);
+    const ready = keys.some(c => c.status === 'ready');
+    const status = !a.enabled ? 'Paused' : ready ? 'Connected' : keys.length ? 'Finish in Duo' : 'Needs setup';
+    const kinds = [...new Set(keys.map(c => c.transport === 'usb' ? 'Security key' : 'Platform key'))].join(' · ') || 'No key connected yet';
+    return `<article class="account"><div class="account-head"><span class="avatar" aria-hidden="true">${escape(a.username.slice(0,2))}</span><div class="account-identity"><h3>${escape(a.label)}</h3><p>${escape(a.username)}</p>${a.aliases?.length ? `<p class="account-aliases">Also matches: ${escape(a.aliases.join(', '))}</p>` : ''}</div><span class="badge ${a.enabled && ready ? 'ready' : ''}">${status}</span></div><div class="account-bottom"><span class="key-types"><img src="icons/key-round.svg" alt="">${escape(kinds)}</span><button class="quiet small" data-edit="${escape(a.id)}" aria-label="${ready ? 'Manage' : 'Set up'} ${escape(a.username)}">${ready ? 'Manage' : 'Set up'} <span aria-hidden="true">↗</span></button></div></article>`;
+  }).join('') : '<p class="empty">No accounts yet. Add your Duo username, then follow the guided setup.</p>';
+  $('events').innerHTML = state.events.length ? state.events.map(e => {
+    const a = state.accounts.find(a => a.id === e.accountId);
+    return `<li><span>${a ? `<strong>${escape(a.username)}</strong><br>` : ''}${escape(e.message)}</span><time datetime="${new Date(e.at).toISOString()}">${escape(new Date(e.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}))}</time></li>`;
+  }).join('') : '<li>Your next connection or key request will appear here.</li>';
+  for (const key of ['enabled','trustClick','toast']) $(key).checked = state.settings[key];
+  $('legacy').hidden = !state.credentials.some(c => !c.accountId);
+  const priorOwner = $('legacyOwner').value;
+  $('legacyOwner').innerHTML = '<option value="">Choose their account</option>' + state.accounts.map(a => `<option value="${escape(a.id)}">${escape(a.username)}</option>`).join('');
+  $('legacyOwner').value = priorOwner;
+  renderConnection();
 }
-// ── rendering ──
-function renderHero(creds, settings) {
-  const hero = $("hero");
-  hero.classList.remove("armed", "off", "empty");
-  if (creds.length === 0) {
-    hero.classList.add("empty");
-    $("heroGlyph").innerHTML = ICONS.shieldAlert;
-    $("heroState").textContent = "No credential";
-    $("heroReason").textContent = "Relay provisions the credential when this browser starts.";
-  } else if (!settings.enabled) {
-    hero.classList.add("off");
-    $("heroGlyph").innerHTML = ICONS.shieldSlash;
-    $("heroState").textContent = "Autopilot off";
-    $("heroReason").textContent = "Duo prompts fall back to your phone.";
-  } else {
-    hero.classList.add("armed");
-    $("heroGlyph").innerHTML = ICONS.shieldCheck;
-    $("heroState").textContent = "Armed";
-    $("heroReason").textContent = `${creds.length} credential${creds.length > 1 ? "s" : ""} ready — no phone, no touch.`;
+function renderConnection() {
+  const account = state.accounts.find(a => a.id === selectedId);
+  $('connection').hidden = !account;
+  $('aliasForm').hidden = !account;
+  $('accountActions').hidden = !account;
+  $('advanced').hidden = !account;
+  if (!account) { $('captureState').hidden = true; $('pendingKeys').innerHTML = ''; return; }
+  $('openLogin').hidden = !account.loginUrl;
+  $('toggleAccount').textContent = account.enabled ? 'Pause account' : 'Resume account';
+  const capture = state.enrollment;
+  const armed = capture?.accountId === selectedId;
+  $('captureState').hidden = !armed;
+  $('startCapture').disabled = !state.settings.enabled || !account.enabled || !!capture;
+  if (armed) {
+    $('captureTitle').textContent = 'Listening in your Duo tab';
+    $('captureText').textContent = capture.error || `Now choose Add a device in Duo, then the device type selected here. Capture expires at ${new Date(capture.expiresAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}.`;
   }
+  $('pendingKeys').innerHTML = state.credentials.filter(c => c.accountId === selectedId && c.status === 'pending').map(c => `<div class="pending"><h3>Key captured</h3><p>Finish the device setup in Duo. Only confirm below after Duo says the device was added. A matching test login can also activate this key.</p><button class="primary full" data-confirm="${escape(c.credentialId)}">Duo confirmed the device was added</button><button class="quiet full" data-discard="${escape(c.credentialId)}">Duo did not finish. Discard this key.</button></div>`).join('');
 }
-
-function renderCreds(creds) {
-  const block = $("credBlock");
-  const group = $("credGroup");
-  if (creds.length === 0) {
-    block.hidden = true;
-    group.innerHTML = "";
-    return;
-  }
-  block.hidden = false;
-  group.innerHTML = creds
-    .map((c) => {
-      const isUsb = c.transport === "usb";
-      const icon = isUsb ? ICONS.key : ICONS.fingerprint;
-      const factor = isUsb ? "Security key" : "Touch ID";
-      const count = Number(c.signCount).toLocaleString();
-      return `<div class="row">
-        <span class="ico">${icon}</span>
-        <div class="row-main">
-          <div class="row-title">${escapeHtml(factor)}</div>
-          <div class="row-desc">${escapeHtml(c.transport)} · ${escapeHtml(c.rpId)}</div>
-        </div>
-        <span class="val">${count}</span>
-      </div>`;
-    })
-    .join("");
+function openEditor(id) {
+  selectedId = id;
+  const account = state.accounts.find(a => a.id === id);
+  $('intro').hidden = true; $('editor').hidden = false;
+  $('editorTitle').textContent = account ? account.username : 'Add an account';
+  $('accountForm').hidden = !!account;
+  $('editDetails').hidden = !account;
+  $('editDetails').textContent = 'Edit account details';
+  document.querySelector('.setup-panel').setAttribute('aria-labelledby', 'editorTitle');
+  $('username').value = account?.username || '';
+  $('aliases').value = (account?.aliases || []).join(', ');
+  $('label').value = account?.label || '';
+  $('loginUrl').value = account?.loginUrl || '';
+  $('saveAccount').textContent = account ? 'Save changes' : 'Create account';
+  removeConfirmation = null; $('removeHelp').hidden = true; $('removeAccount').textContent = 'Remove account';
+  $('advanced').open = false;
+  $('importFile').value = '';
+  renderConnection();
+  $('editor').scrollIntoView({ block:'nearest' });
+  (account ? $('editorTitle') : $('username')).focus({preventScroll:true});
+  if (account) void refreshTabs().catch(error => message(error.message,true));
 }
-
-function setSwitch(el, on) {
-  el.setAttribute("aria-checked", on ? "true" : "false");
+async function refreshTabs() {
+  const tabs = await request('DUO_TABS');
+  const previous = $('duoTab').value;
+  $('duoTab').innerHTML = '<option value="">Choose a Duo tab</option>' + tabs.map(t => `<option value="${t.id}">${escape(t.title)} · ${escape(new URL(t.url).hostname)} · tab ${t.id}</option>`).join('');
+  if (tabs.some(t => String(t.id) === previous)) $('duoTab').value = previous;
+  else if (tabs.length === 1) $('duoTab').value = String(tabs[0].id);
+  if (!tabs.length) $('duoTab').innerHTML = '<option value="">No Duo tab open yet</option>';
 }
-function renderToggles(s) {
-  setSwitch($("tgEnabled"), s.enabled);
-  setSwitch($("tgTrust"), s.trustClick);
-  setSwitch($("tgToast"), s.toast);
-}
-
-async function refresh() {
-  const [creds, settings] = await Promise.all([loadStored(), loadSettings()]);
-  renderHero(creds, settings);
-  renderCreds(creds);
-  renderToggles(settings);
-}
-
-// ── toggles ──
-function bindToggle(el, key) {
-  el.addEventListener("click", async () => {
-    const on = el.getAttribute("aria-checked") !== "true";
-    setSwitch(el, on); // optimistic
-    await saveSettings({ [key]: on });
-    if (key === "enabled") renderHero(await loadStored(), await loadSettings());
-  });
-}
-
-// ── credential actions ──
-// Two-step inline confirm — no native confirm() dialog.
-let clearArmed = false;
-let clearTimer = null;
-function resetClear() {
-  clearArmed = false;
-  if (clearTimer) clearTimeout(clearTimer);
-  clearTimer = null;
-  $("clearLabel").textContent = "Clear credentials";
-  $("actClear").classList.remove("confirming");
-}
-async function clearCreds() {
-  if (!clearArmed) {
-    clearArmed = true;
-    $("clearLabel").textContent = "Tap again to confirm";
-    $("actClear").classList.add("confirming");
-    clearTimer = setTimeout(resetClear, 3000);
-    return;
-  }
-  resetClear();
-  await chrome.storage.session.remove(STORAGE_KEY);
-  await refresh();
-  setMsg($("actMsg"), "Cleared stored credentials.", "warn");
-}
-
-$("actClear").addEventListener("click", clearCreds);
-bindToggle($("tgEnabled"), "enabled");
-bindToggle($("tgTrust"), "trustClick");
-bindToggle($("tgToast"), "toast");
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes[STORAGE_KEY] || area === "local" && changes[SETTINGS_KEY]) refresh();
+async function mutate(type, data) { state = await request(type,data); render(); }
+for (const tab of document.querySelectorAll('[data-page]')) tab.addEventListener('click', () => {
+  for (const button of document.querySelectorAll('[data-page]')) { button.classList.toggle('selected', button === tab); if (button === tab) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current'); }
+  for (const name of ['accounts','preferences','help']) $(name+'Page').hidden = name !== tab.dataset.page;
 });
-refresh();
+$('editDetails').addEventListener('click', () => { $('accountForm').hidden = !$('accountForm').hidden; $('editDetails').textContent = $('accountForm').hidden ? 'Edit account details' : 'Hide account details'; if (!$('accountForm').hidden) $('username').focus(); });
+$('addAccount').addEventListener('click', () => openEditor(null));
+$('closeEditor').addEventListener('click', () => { selectedId = null; $('editor').hidden = true; $('intro').hidden = false; document.querySelector('.setup-panel').setAttribute('aria-labelledby', 'setupHeading'); $('addAccount').focus(); });
+$('accountList').addEventListener('click', event => { const button = event.target.closest('[data-edit]'); if (button) openEditor(button.dataset.edit); });
+$('accountForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void action($('saveAccount'), async () => {
+    const username = $('username').value.trim().toLowerCase();
+    await mutate('SAVE_ACCOUNT',{ id:selectedId, username, label:$('label').value, loginUrl:$('loginUrl').value, enabled:state.accounts.find(a => a.id === selectedId)?.enabled ?? true });
+    openEditor(state.accounts.find(a => a.username === username).id);
+    message('Account saved. Manage shared usernames and keys below.');
+  });
+});
+$('aliasForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void action($('saveAliases'), async () => {
+    const aliases = $('aliases').value.split(',').map(name => name.trim()).filter(Boolean);
+    await mutate('SAVE_ALIASES', { accountId: selectedId, aliases });
+    $('aliases').value = (state.accounts.find(a => a.id === selectedId)?.aliases || []).join(', ');
+    message('Alternate usernames saved. They share this account’s keys.');
+  });
+});
+$('pause').addEventListener('click', () => action($('pause'), () => mutate('SAVE_SETTINGS', {enabled:!state.settings.enabled})));
+for (const key of ['enabled','trustClick','toast']) $(key).addEventListener('change', () => action($(key), async () => {
+  try { await mutate('SAVE_SETTINGS',{[key]:$(key).checked}); } finally { $(key).checked = state.settings[key]; }
+}));
+$('refreshTabs').addEventListener('click', () => action($('refreshTabs'),refreshTabs));
+$('openLogin').addEventListener('click', () => action($('openLogin'), async () => {
+  const account = state.accounts.find(a => a.id === selectedId);
+  if (account?.loginUrl) await chrome.tabs.create({url:account.loginUrl});
+}));
+$('startCapture').addEventListener('click', () => action($('startCapture'), async () => {
+  if (!$('duoTab').value) throw new Error('Open your Duo device-management page, then refresh the tab list.');
+  await mutate('ARM',{accountId:selectedId,tabId:Number($('duoTab').value),transport:$('transport').value});
+  message('Capture started. Add your device in the selected Duo tab.');
+}));
+$('cancelCapture').addEventListener('click', () => action($('cancelCapture'), () => mutate('CANCEL')));
+$('pendingKeys').addEventListener('click', event => {
+  const button = event.target.closest('[data-confirm], [data-discard]');
+  if (button) void action(button, () => mutate(button.dataset.confirm ? 'CONFIRM' : 'DISCARD_PENDING',{credentialId:button.dataset.confirm || button.dataset.discard}));
+});
+$('toggleAccount').addEventListener('click', () => action($('toggleAccount'), () => mutate('TOGGLE_ACCOUNT',{accountId:selectedId})));
+$('removeAccount').addEventListener('click', () => action($('removeAccount'), async () => {
+  if (removeConfirmation !== selectedId) { removeConfirmation = selectedId; $('removeAccount').textContent = 'Confirm removal'; $('removeHelp').hidden = false; return; }
+  await mutate('REMOVE_ACCOUNT',{accountId:selectedId});
+  $('closeEditor').click(); message('Account and local keys removed. You can remove the registered device separately in Duo.');
+}));
+$('importKeys').addEventListener('click', () => action($('importKeys'), async () => {
+  const file = $('importFile').files[0];
+  if (!file || file.size > 1024*1024) throw new Error('Choose a credential JSON file smaller than 1 MB.');
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); } catch { throw new Error('This file is not valid JSON. Nothing was imported.'); }
+  await mutate('IMPORT',{accountId:selectedId,parsed}); $('importFile').value=''; message('Keys imported for this account.');
+}));
+$('linkLegacy').addEventListener('click', () => action($('linkLegacy'), () => mutate('LINK_LEGACY',{accountId:$('legacyOwner').value})));
+const stateEvents = new BroadcastChannel('duo-autopilot-state');
+stateEvents.addEventListener('message', event => {
+  if (event.data?.type === 'STATE_CHANGED') void refresh().catch(error => message(error.message,true));
+});
+window.addEventListener('focus', () => { if (state) void refresh().catch(error => message(error.message,true)); });
+async function refresh() { state = await request('STATE'); render(); }
+await refresh().catch(error => { $('globalStatus').textContent='Could not load accounts'; $('globalDetail').textContent='Reload the extension, then reopen this page.'; message(error.message,true); $('addAccount').disabled=true; });
+setInterval(() => { if (state?.enrollment && state.enrollment.expiresAt <= Date.now()) void refresh().catch(error => message(error.message,true)); },1000);

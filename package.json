@@ -2,9 +2,22 @@
   "private": true,
   "type": "module",
   "name": "duo-autopilot",
-  "version": "0.1.0",
-  "description": "Hands-off UCSD Duo MFA in your own browser (MV3 extension). No build step — package.json exists only so Node runs the ESM crypto self-test; Chrome ignores it.",
+  "version": "0.3.0",
+  "description": "Account-aware Duo extension with guided personal enrollment.",
   "scripts": {
-    "test": "node test/crypto.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.mjs",
+    "lint": "eslint .",
+    "package": "node scripts/package.mjs",
+    "setup": "node scripts/setup.mjs",
+    "package:safari": "node scripts/package-safari.mjs",
+    "package:safari:personal": "node scripts/package-safari.mjs --personal"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^17.12.0",
+    "lucide-static": "^1.42.0"
   }
 }

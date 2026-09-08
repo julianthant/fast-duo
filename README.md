@@ -1,42 +1,120 @@
 # Duo Autopilot
 
-Relay loads this Manifest V3 extension into its owned Chromium sessions to answer Duo WebAuthn assertions for `duosecurity.com`. Full Chromium is required because the separate headless shell cannot load extensions. Relay can run full Chromium headed or headless.
+A standalone Manifest V3 Chrome and Safari extension with separate Duo accounts, exact key
+matching, a toolbar popup, and guided personal enrollment. Runtime is plain local
+JavaScript; no build or server is required.
 
-This automates a Duo factor. Use it only for an account and environment you are authorized to operate, and follow the institution's authentication policy.
+## Your installation
 
-## Provisioning
+Load `/Users/julianhein/Projects/duo-autopilot` from `chrome://extensions` using
+Developer mode → Load unpacked. If it is already loaded, click Reload on its card,
+then reopen Extension options and refresh any open Duo pages.
 
-Relay reads and validates the protected credential file configured by `paths.duoCredential` (`duoWebauthnCredential`). It loads the extension from `paths.duoExtensionDir`, then writes the credential records to the extension's `chrome.storage.session` for each owned browser session. Relay restricts that storage to trusted extension contexts and verifies the stored records. It refuses to provision if a credential copy already exists in `chrome.storage.local`.
+The private `bootstrap.json` assigns the two existing credentials to **juzaw**,
+with **jzaw** as an alternate username using the same keys. On the next extension
+reload, a one-time migration merges the old separate profile into that account.
+Existing keys and counters are preserved; any enrollment capture on the old
+profile is cancelled. Removing an alias or account later does not restore it.
 
-The extension does not enroll keys or import a packaged credential file. Its Options page shows the active session's credential status and signing counters; it cannot add or replace credentials. Set the credential through Relay's machine credential file.
+To share an account's keys with another username, open **Manage → Alternate
+usernames**, enter the additional usernames separated by commas, and choose
+**Save usernames**. Every name in the group uses the same key records and counters.
+A username can belong to only one account. Remove a name from this list to stop
+matching it without deleting keys. Pausing the account pauses all its usernames.
 
-## Assertion flow
+Aliases route existing keys; Duo must still recognize the requested credential.
+An alias cannot make a key registered to an unrelated Duo identity valid. For a
+separate key set, create a separate account and follow guided enrollment.
 
-On `*.duosecurity.com`, `inpage.js` intercepts `navigator.credentials.get()` only when the WebAuthn relying-party ID is `duosecurity.com`. `content.js` relays the challenge to `background.js`. The service worker signs it with the provisioned private key, advances the signing counter in session storage, and returns the assertion. The page and content script never receive the private key. If signing is disabled or no matching credential is available, the browser handles the request normally.
+## Safari
 
-The extension does not override `navigator.credentials.create()`. Duo device registration uses the browser's normal WebAuthn flow.
+Run `npm run package:safari:personal` for your private Safari app, including the
+two existing keys for **juzaw**, also matched by the alternate username **jzaw**. Open
+`dist/safari-personal/Duo Autopilot.app`, then enable it in Safari Settings.
+This local build requires Allow unsigned extensions and permission for your Duo
+site. See [SAFARI.md](SAFARI.md) for installation and clean distribution builds.
 
-When enabled, the trust-click setting selects Duo's affirmative "Yes, this is my device" or "Yes, trust browser" control after approval. It does not select the refusal control.
+Chrome and Safari keep separate storage and counters; changes do not sync.
 
-## Options
+## Account matching
 
-The extension Options page provides these controls:
+- Only HTTPS pages on duosecurity.com and its subdomains are eligible.
+- The browser-provided sender origin must match the signed origin.
+- Duo's credential allowlist is authoritative. A detected username can narrow it,
+  never override it. Multiple matching accounts do not silently choose the first. Primary and alternate
+  usernames resolve to the same account; visible names identifying different accounts defer.
+- An empty allowlist requires an exact detected account and a ready discoverable
+  credential with a user handle. Missing or ambiguous identity falls through to
+  the browser's normal authentication.
+- Username detection reads visible username inputs and labeled lines such as
+  `Username: juzaw`. Arbitrary page text and SSO pages on other domains are not read.
+- Enrollment is explicitly armed for one account, tab, origin and ten-minute
+  window. The registration username must match its primary or alternate usernames. A single capture disarms it.
+- A captured key remains pending until the user confirms Duo accepted it or a
+  later Duo request includes that exact ID. A signed assertion is not logged as
+  proof that the application login succeeded.
 
-| Control | Behavior |
-|---|---|
-| **Autopilot** | Enables or disables automatic assertion signing. |
-| **Trust this device** | Enables or disables the affirmative trust-device click. |
-| **Show toast** | Enables or disables the on-page approval notice. |
-| **Clear credentials** | Removes the credential records from the current browser session. Relay provisions them again when it starts a new owned session. |
+Not every Duo page exposes a supported username field. Current routing has unit
+and mocked-browser verification; current live Duo markup and new-account server
+acceptance have not been verified. Site-specific layout changes may require a
+small detector update. Organization policies may prevent software-key enrollment.
 
-All three toggles default to on. Clearing credentials affects only the current browser session.
+## Share with others
 
-## Offline test
+Run `npm run package`. Share **only** `dist/duo-autopilot-share.zip`, or give someone
+the unpacked `dist/duo-autopilot` folder. The packaging allowlist includes runtime
+files, icons, a clean bootstrap and installation instructions. It excludes your
+keys, usernames, test profiles, screenshots and development dependencies.
 
-From the repository root, run:
+Each person starts empty and enrolls their own key. See [INSTALL.md](INSTALL.md).
+One-click installation and automatic updates require a Chrome Web Store listing
+and approval; this project has not been submitted or published.
 
-```bash
-npm --prefix duo-autopilot test
+## Local storage and removal
+
+Private keys remain in trusted extension contexts. Chrome 140+ uses
+`chrome.storage.local` with `TRUSTED_CONTEXTS` access. Safari 18+ uses IndexedDB
+owned by the extension background because Safari cannot restrict `storage.local`.
+Safari migration verifies the private copy before deleting old shared storage;
+conflicts or failed writes block startup without discarding either copy. Content scripts receive only per-request public
+results and non-secret settings. Keys never appear in page scripts, UI responses,
+activity history, or share archives. Your personal credential file is owner-readable
+only, and both it and personal bootstrap are Git-ignored.
+
+The master pause and per-account pause take effect on new requests. Removing an
+account deletes its local keys; remove the corresponding device in Duo separately.
+Enrollment needs an existing verification method. Keep that method available.
+An unlocked profile can use its connected accounts. There is no encryption beyond
+your browser/OS storage, no cloud sync, and no backup service. Use separate enrolled
+keys per browser profile where possible; imported copies do not share counters.
+
+## Development and verification
+
+```
+npm ci
+npm run setup # creates clean bootstrap only if missing
+npm test
+npm run lint
+npm run test:coverage
+npm run package
 ```
 
-The test uses a generated throwaway P-256 key and verifies the byte-exact assertion data and signature. It does not read the configured credential.
+Crypto tests generate throwaway keys. Core tests cover account isolation, allowlist
+matching, ambiguity, tab/origin/expiry checks, one-shot capture, counters, storage
+failure, migration, removal, imports, shared username matching, alias collisions and counter continuity. Browser smoke fixtures use intercepted
+HTTPS responses and never contact Duo. Browser artifacts remain local under
+`verification/`; `scripts/browser-flow.js` is run through playwright-cli with an
+isolated persistent context and the extension loaded. `scripts/browser-alias-flow.js`
+checks alias enrollment and assertions for both names using the same throwaway key.
+
+## Provenance
+
+Based on `hr-automation-rebuild/duo-autopilot`, source checkout HEAD
+`9018540f564e82be8db972d4509fe3e3386fdbba`. The original crypto implementation and
+counter helper are preserved. This project does not modify or depend at runtime
+on the HR repositories. Functional icons use Lucide; see THIRD_PARTY_NOTICES.md.
+
+References: [Duo enrollment](https://guide.duo.com/universal-enrollment),
+[Chrome installation](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked),
+[Chrome distribution](https://developer.chrome.com/docs/extensions/how-to/distribute),
+[WebAuthn](https://www.w3.org/TR/webauthn-2/).

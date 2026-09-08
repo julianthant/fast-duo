@@ -1,253 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Duo Autopilot</title>
-    <style>
-      /* ── System-native (Apple Settings) tokens, dark/light aware ── */
-      :root {
-        color-scheme: light dark;
-        --bg: #f2f2f7;
-        --group: #ffffff;
-        --group-hover: #f5f5f8;
-        --group-active: #ececef;
-        --separator: #e4e4e9;
-        --label: #1c1c1e;
-        --secondary: #8a8a8e;
-        --green: #34c759;
-        --blue: #007aff;
-        --red: #ff3b30;
-        --amber: #ff9500;
-        --toggle-off: #e9e9ea;
-        --chev: #c4c4c6;
-        --btn-bg: #ececef;
-        --knob: #ffffff;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #000000;
-          --group: #1c1c1e;
-          --group-hover: #2a2a2c;
-          --group-active: #323234;
-          --separator: #38383a;
-          --label: #f5f5f7;
-          --secondary: #98989f;
-          --green: #30d158;
-          --blue: #0a84ff;
-          --red: #ff453a;
-          --amber: #ff9f0a;
-          --toggle-off: #39393d;
-          --chev: #5a5a5e;
-          --btn-bg: #2c2c2e;
-          --knob: #ffffff;
-        }
-      }
-
-      * { box-sizing: border-box; }
-      html, body { margin: 0; }
-      body {
-        background: var(--bg);
-        color: var(--label);
-        font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        padding: 28px 20px 64px;
-      }
-      .wrap { max-width: 600px; margin: 0 auto; }
-
-      /* ── header ── */
-      .app-header { margin: 4px 4px 22px; }
-      .app-header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.021em; margin: 0; }
-      .app-header .subtitle { font-size: 14px; color: var(--secondary); margin: 2px 0 0; }
-
-      /* ── hero status banner ── */
-      .hero {
-        display: flex; align-items: center; gap: 14px;
-        padding: 15px 16px; border-radius: 14px; margin-bottom: 26px;
-        background: var(--hero-bg, var(--group));
-        transition: background 0.2s ease;
-      }
-      .hero-glyph {
-        width: 40px; height: 40px; border-radius: 50%; flex: none;
-        display: grid; place-items: center;
-        background: var(--hero-tint, rgba(0,0,0,0.05));
-        color: var(--state, var(--secondary));
-      }
-      .hero-glyph svg { width: 22px; height: 22px; }
-      .hero-state { font-size: 16px; font-weight: 600; color: var(--label); }
-      .hero-reason { font-size: 13px; color: var(--secondary); margin-top: 1px; }
-      .hero.armed { --state: var(--green); --hero-tint: color-mix(in srgb, var(--green) 16%, transparent); --hero-bg: color-mix(in srgb, var(--green) 9%, var(--group)); }
-      .hero.off    { --state: var(--secondary); --hero-tint: color-mix(in srgb, var(--secondary) 16%, transparent); --hero-bg: var(--group); }
-      .hero.empty  { --state: var(--amber); --hero-tint: color-mix(in srgb, var(--amber) 16%, transparent); --hero-bg: color-mix(in srgb, var(--amber) 9%, var(--group)); }
-
-      /* ── grouped lists ── */
-      .block { margin-bottom: 26px; }
-      .sec-label {
-        font-size: 13px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase;
-        color: var(--secondary); margin: 0 0 8px 16px;
-      }
-      .group { background: var(--group); border-radius: 12px; overflow: hidden; }
-
-      .row {
-        position: relative; display: flex; align-items: center; gap: 12px;
-        min-height: 44px; padding: 11px 16px; width: 100%;
-        background: var(--group); color: var(--label);
-        border: 0; margin: 0; font: inherit; text-align: left;
-      }
-      button.row { cursor: pointer; }
-      /* hairline separator, inset to the text edge (after the 20px icon + gaps) */
-      .row::after {
-        content: ""; position: absolute; left: 48px; right: 0; bottom: 0;
-        height: 1px; background: var(--separator);
-      }
-      .group > .row:last-child::after { display: none; }
-      button.row.tap:hover { background: var(--group-hover); }
-      button.row.tap:active { background: var(--group-active); }
-      .row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-
-      .ico { width: 20px; height: 20px; flex: none; display: grid; place-items: center; color: var(--secondary); }
-      .ico svg { width: 20px; height: 20px; }
-      .row-main { flex: 1; min-width: 0; }
-      .row-title { font-size: 15px; font-weight: 450; color: var(--label); }
-      .row-desc { font-size: 13px; color: var(--secondary); margin-top: 1px; }
-      .val { font-size: 13px; color: var(--secondary); font-variant-numeric: tabular-nums; }
-      .chev { flex: none; display: grid; place-items: center; color: var(--chev); }
-      .chev svg { width: 18px; height: 18px; }
-
-      .row.danger .row-title { color: var(--red); }
-      .row.danger .ico { color: var(--red); }
-      .row.danger.confirming { background: color-mix(in srgb, var(--red) 9%, var(--group)); }
-
-      /* ── iOS toggle ── */
-      .switch {
-        position: relative; width: 51px; height: 31px; flex: none;
-        border: 0; padding: 0; border-radius: 999px; cursor: pointer;
-        background: var(--toggle-off); -webkit-appearance: none; appearance: none;
-        transition: background 0.2s ease;
-      }
-      .switch::after {
-        content: ""; position: absolute; top: 2px; left: 2px;
-        width: 27px; height: 27px; border-radius: 50%; background: var(--knob);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(0,0,0,0.04);
-        transition: transform 0.2s ease;
-      }
-      .switch[aria-checked="true"] { background: var(--green); }
-      .switch[aria-checked="true"]::after { transform: translateX(20px); }
-      .switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-
-      /* ── paste editor ── */
-      .paste-editor { padding: 12px 16px 14px; background: var(--group); border-top: 1px solid var(--separator); }
-      .paste-editor textarea {
-        width: 100%; min-height: 116px; resize: vertical;
-        border: 1px solid var(--separator); border-radius: 8px; padding: 10px;
-        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-        background: var(--bg); color: var(--label);
-      }
-      .paste-editor textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-      .paste-actions { display: flex; gap: 8px; margin-top: 10px; }
-      .btn {
-        font: inherit; font-size: 14px; font-weight: 500; padding: 7px 15px;
-        border: 0; border-radius: 8px; cursor: pointer; background: var(--btn-bg); color: var(--blue);
-      }
-      .btn.primary { background: var(--blue); color: #fff; }
-      .btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-
-      /* ── enroll panel ── */
-      .enroll-panel { padding: 12px 16px 14px; background: var(--group); border-top: 1px solid var(--separator); }
-      .enroll-hint { font-size: 13px; color: var(--secondary); margin: 0 0 10px; }
-      .enroll-hint b { color: var(--label); }
-      .enroll-steps { margin: 2px 0 12px; padding-left: 18px; font-size: 13px; color: var(--secondary); }
-      .enroll-steps li { margin: 5px 0; }
-      .enroll-steps b { color: var(--label); }
-      .enroll-steps a { color: var(--blue); }
-
-      /* ── inline feedback ── */
-      .msg { font-size: 13px; margin: 8px 16px 0; }
-      .msg:empty { margin: 0; }
-      .msg.ok { color: var(--green); }
-      .msg.warn { color: var(--amber); }
-      .msg.err { color: var(--red); }
-
-      @media (prefers-reduced-motion: reduce) {
-        * { transition: none !important; animation: none !important; }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="wrap">
-      <header class="app-header">
-        <h1>Duo Autopilot</h1>
-        <p class="subtitle">Hands-off UCSD Duo MFA</p>
-      </header>
-
-      <!-- Hero status banner (state filled by JS) -->
-      <section class="hero" id="hero" aria-live="polite">
-        <div class="hero-glyph" id="heroGlyph"></div>
-        <div>
-          <div class="hero-state" id="heroState">Checking…</div>
-          <div class="hero-reason" id="heroReason"></div>
-        </div>
-      </section>
-
-      <!-- Status group -->
-      <section class="block" id="credBlock" hidden>
-        <div class="sec-label">Credentials</div>
-        <div class="group" id="credGroup"></div>
-      </section>
-
-      <!-- Settings group -->
-      <section class="block">
-        <div class="sec-label">Autopilot</div>
-        <div class="group">
-          <div class="row">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Autopilot</div>
-              <div class="row-desc">Answer Duo automatically</div>
-            </div>
-            <button class="switch" id="tgEnabled" role="switch" aria-checked="true" aria-label="Autopilot"></button>
-          </div>
-          <div class="row">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Trust this device</div>
-              <div class="row-desc">Auto-click “Yes, this is my device”</div>
-            </div>
-            <button class="switch" id="tgTrust" role="switch" aria-checked="true" aria-label="Trust this device"></button>
-          </div>
-          <div class="row">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.27 21a2 2 0 0 0 3.46 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title">Show toast</div>
-              <div class="row-desc">On-page confirmation when approved</div>
-            </div>
-            <button class="switch" id="tgToast" role="switch" aria-checked="true" aria-label="Show toast"></button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Credential actions -->
-      <section class="block">
-        <div class="sec-label">Credential</div>
-        <div class="group">
-          <button class="row tap danger" id="actClear">
-            <span class="ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-            </span>
-            <div class="row-main">
-              <div class="row-title" id="clearLabel">Clear credentials</div>
-            </div>
-          </button>
-        </div>
-        <p class="msg" id="actMsg" aria-live="polite"></p>
-      </section>
-    </main>
-    <script src="options.js"></script>
-  </body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Duo Autopilot</title><link rel="stylesheet" href="styles.css"><script type="module" src="options.js"></script></head>
+<body>
+<div class="app">
+<header class="topbar"><a class="brand" href="options.html"><img class="brand-mark" src="icons/autopilot.svg" alt="" width="42" height="42"><span>Duo Autopilot<small>Personal authentication</small></span></a><span class="local-note"><span class="dot"></span>Stored on this browser</span></header>
+<nav class="tabs" aria-label="Settings pages"><button class="tab selected" data-page="accounts" aria-current="page">Accounts</button><button class="tab" data-page="preferences">Preferences</button><button class="tab" data-page="help">Setup & sharing</button></nav>
+<main>
+<div id="message" role="status" class="notice" hidden></div>
+<section id="accountsPage">
+<div class="page-heading"><div><h1>Your accounts</h1><p>Your keys, matched to your usernames automatically.</p></div><button id="addAccount" class="primary"><img src="icons/plus.svg" alt="">Add account</button></div>
+<div class="status-strip"><span id="statusSymbol" class="status-symbol"><img src="icons/shield-check.svg" alt=""></span><div><strong id="globalStatus">Loading your accounts…</strong><p id="globalDetail">Reading this browser’s local settings.</p></div><button id="pause" class="quiet" disabled>Pause</button></div>
+<div class="workspace">
+<section aria-labelledby="accountListHeading"><div class="section-heading"><h2 id="accountListHeading">Connected accounts</h2><span id="accountCount" class="muted"></span></div><div id="accountList" class="account-list" aria-busy="true"><p class="empty">Loading…</p></div>
+<div id="legacy" class="notice" hidden><strong>Existing keys need an account</strong><p>Select their owner below to link keys imported by the previous version.</p><select id="legacyOwner" aria-label="Owner of existing keys"></select><button id="linkLegacy" class="secondary">Link existing keys</button></div>
+<section class="activity" aria-labelledby="activityHeading"><h2 id="activityHeading">Recent activity</h2><p class="muted">Only the last 12 events stay on this browser.</p><ol id="events" class="event-list"></ol></section>
+</section>
+<aside class="setup-panel" aria-labelledby="setupHeading">
+<div id="intro"><span class="small-label">Made for your everyday browser</span><h2 id="setupHeading">Connect once.<br>Let Autopilot take it from here.</h2><p>Choose an account to add a key, or create one to get started.</p><ol class="steps"><li><span>1</span><div><strong>Name your account</strong><p>Use the exact username shown by Duo.</p></div></li><li><span>2</span><div><strong>Enroll through Duo</strong><p>Approve with an existing method, then add a device.</p></div></li><li><span>3</span><div><strong>Finish and connect</strong><p>Your new key stays in this browser.</p></div></li></ol><a class="text-link" href="https://guide.duo.com/universal-enrollment#add-or-manage-devices" target="_blank" rel="noreferrer">How Duo enrollment works <span aria-hidden="true">↗</span></a></div>
+<div id="editor" hidden><div class="section-heading"><h2 id="editorTitle" tabindex="-1">Add account</h2><button id="closeEditor" class="quiet small">Close</button></div><button id="editDetails" class="quiet small" hidden>Edit account details</button><form id="accountForm"><label for="username">Duo username</label><input id="username" required maxlength="128" autocomplete="off" placeholder="Your username"><p class="field-help">Your primary Duo username or email. Add alternate usernames after saving.</p><label for="label">Display name <span class="muted">(optional)</span></label><input id="label" maxlength="80" placeholder="Work, school, or personal"><label for="loginUrl">Sign-in link <span class="muted">(optional)</span></label><input id="loginUrl" type="url" placeholder="https://your-organization.example"><p class="field-help">Use your organization’s usual sign-in page.</p><button class="primary full" type="submit" id="saveAccount">Save account</button></form>
+<form id="aliasForm" hidden><div class="divider"></div><h3>Alternate usernames</h3><p>Use this account’s keys for other Duo usernames. No separate enrollment is needed when Duo accepts the same key.</p><label for="aliases">Usernames sharing these keys</label><input id="aliases" autocomplete="off" placeholder="Another username or email" aria-describedby="aliasesHelp"><p id="aliasesHelp" class="field-help">Separate usernames with commas. Remove a name here to stop matching it; the keys stay saved.</p><button id="saveAliases" class="secondary full" type="submit">Save usernames</button></form>
+<div id="connection" hidden><div class="divider"></div><h3>Add a key</h3><p>Open your sign-in page. At Duo, choose <strong>Other options → Manage devices</strong> and verify with an existing method.</p><button id="openLogin" class="secondary full" hidden>Open sign-in page ↗</button><label for="duoTab">Duo tab</label><div class="input-action"><select id="duoTab"><option value="">Find your open Duo tab</option></select><button id="refreshTabs" class="quiet">Refresh</button></div><p class="field-help">Open a Duo page, then refresh this list. Capture is limited to your selected tab.</p><label for="transport">Device type</label><select id="transport"><option value="usb">Security key</option><option value="internal">Touch ID / platform key</option></select><p class="field-help">Choose a type your organization offers.</p><button id="startCapture" class="primary full">Start capture</button><p class="fine-print">Then select <strong>Add a device</strong> in Duo. Autopilot creates the key when Duo requests it.</p></div>
+<div id="captureState" class="capture-state" hidden><strong id="captureTitle"></strong><p id="captureText"></p><button id="cancelCapture" class="secondary">Cancel capture</button></div>
+<div id="pendingKeys"></div>
+<div id="accountActions" class="account-actions" hidden><button id="toggleAccount" class="quiet">Pause account</button><button id="removeAccount" class="danger quiet">Remove account</button><p id="removeHelp" class="field-help" hidden>Click again to remove this account and its keys from this browser. The device will still be registered in Duo.</p></div>
+<details id="advanced"><summary>Import existing keys</summary><p>If you already have an Autopilot credential file, import it for this account.</p><label for="importFile">Credential JSON</label><input id="importFile" type="file" accept="application/json,.json"><button id="importKeys" class="secondary">Import for this account</button></details>
+</div></aside>
+</div>
+</section>
+<section id="preferencesPage" hidden><div class="page-heading"><div><h1>Preferences</h1><p>Small choices for the way you sign in.</p></div></div><div class="preferences-list"><label class="preference"><span><strong>Autopilot</strong><small>Answer matching Duo key requests automatically.</small></span><input type="checkbox" id="enabled" role="switch"></label><label class="preference"><span><strong>Trust this browser</strong><small>Choose “Yes, this is my device” when Duo offers it.</small></span><input type="checkbox" id="trustClick" role="switch"></label><label class="preference"><span><strong>On-page confirmation</strong><small>Show a brief message when Autopilot answers or captures a key.</small></span><input type="checkbox" id="toast" role="switch"></label></div><p class="fine-print">Pausing keeps your keys. Removing an account deletes its local keys. Duo device registration is managed separately in Duo.</p></section>
+<section id="helpPage" class="help" hidden><div class="page-heading"><div><h1>A familiar setup. Your own keys.</h1><p>Every person connects their own Duo account in their own browser.</p></div></div><ol class="help-steps"><li><h2>Install the clean extension</h2><p id="installInstructions">Use the shareable package, unzip it, then open <code>chrome://extensions</code>. Turn on Developer mode and choose Load unpacked. Keep the folder in place.</p></li><li><h2>Add your account</h2><p>Enter your primary Duo username and an optional sign-in link. Under Manage, add alternate usernames that use the same keys. Create a separate account for a separate key set.</p></li><li><h2>Authorize a new device</h2><p>Sign in, open Duo’s device management, and approve with an existing method. Select that Duo tab here, start capture, and add a security key or platform key in Duo.</p></li><li><h2>Finish in Duo</h2><p>Wait for Duo to confirm the device was added. Confirm that here, or test a login: an exact key request from Duo automatically activates the captured key.</p></li></ol><div class="help-note"><h2>How the right account is chosen</h2><p>Duo’s requested key IDs are checked first. An exact visible primary or alternate username can narrow the match. When Duo sends no key IDs, a visible username and a matching discoverable key are required. Missing or conflicting identity leaves the request to your usual Duo method.</p><p>Page layouts differ. Username detection supports labeled username fields and lines; it does not guess from unrelated text or read other websites.</p></div><div class="help-note"><h2>Sharing and privacy</h2><p>Share only the generated <code>duo-autopilot-share.zip</code> for Chrome or <code>duo-autopilot-safari-share.zip</code> for Safari. It contains no personal accounts or keys. Do not share your personal installation folder.</p><p>Keys are stored locally in your browser profile. Anyone using your unlocked profile can use its linked accounts. There is no cloud sync or analytics. This extension is independent of Cisco Duo.</p><p>Standard installation and updates require a Chrome Web Store or App Store release. These local packages have not been published.</p><a href="https://guide.duo.com/universal-enrollment" target="_blank" rel="noreferrer">Duo’s enrollment guide ↗</a></div></section>
+</main><footer><span>Duo Autopilot <span class="muted">/ 0.3.0</span></span><span>Local keys. Account-aware matching.</span></footer>
+</div></body></html>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Duo Autopilot",
-  "version": "0.2.0",
-  "description": "Hands-off UCSD Duo MFA in your own browser.",
+  "version": "0.3.0",
+  "description": "Account-aware Duo authentication with guided personal setup.",
   "permissions": [
     "storage"
   ],
@@ -31,11 +31,29 @@
         "https://*.duosecurity.com/*"
       ],
       "js": [
+        "src/username.js",
         "src/content.js"
       ],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": true
     }
-  ]
+  ],
+  "minimum_chrome_version": "140",
+  "action": {
+    "default_title": "Duo Autopilot",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "src/icons/autopilot-16.png",
+      "32": "src/icons/autopilot-32.png",
+      "48": "src/icons/autopilot-48.png",
+      "128": "src/icons/autopilot-128.png"
+    }
+  },
+  "icons": {
+    "16": "src/icons/autopilot-16.png",
+    "32": "src/icons/autopilot-32.png",
+    "48": "src/icons/autopilot-48.png",
+    "128": "src/icons/autopilot-128.png"
+  }
 }
