@@ -1,6 +1,6 @@
 import { base64ToBytes, bytesToBase64, createAssertion, createRegistration, importEcdsaPrivateKey } from './crypto.js';
 import { nextSignCount } from './sign-count.js';
-import { normalizeUsername, validateAccount, validateCredentials, selectCredential, isDuoOrigin } from './accounts.js';
+import { normalizeUsername, accountUsernames, validateAccount, validateCredentials, selectCredential, isDuoOrigin } from './accounts.js';
 
 const STORE = 'autopilotV1';
 const defaultSettings = { enabled: true, trustClick: false, toast: true };
@@ -36,10 +36,36 @@ export function createService(storage, now = () => Date.now()) {
     for (const c of creds) await importEcdsaPrivateKey(base64ToBytes(c.privateKey));
     return creds;
   }
+  async function applyAliasMigrations(state, bootstrap) {
+    const applied = new Set(state.appliedAliasMigrations || []);
+    let changed = false;
+    for (const migration of bootstrap.aliasMigrations || []) {
+      if (typeof migration.id !== 'string' || !migration.id) throw new Error('Invalid account alias migration.');
+      if (applied.has(migration.id)) continue;
+      const owner = state.accounts.find(a => a.username === normalizeUsername(migration.ownerUsername));
+      // A removed owner stays removed. Never recreate accounts or keys from bootstrap.
+      if (owner) {
+        const username = validateAccount({ username: migration.username }).username;
+        const source = state.accounts.find(a => a.id !== owner.id && a.username === username);
+        const remaining = state.accounts.filter(a => a.id !== source?.id);
+        const updated = validateAccount({ ...owner, aliases: [...(owner.aliases || []), username, ...(source?.aliases || [])] }, remaining);
+        state.accounts = remaining.map(a => a.id === owner.id ? updated : a);
+        if (source) {
+          for (const credential of state.credentials) if (credential.accountId === source.id) credential.accountId = owner.id;
+          if (state.enrollment?.accountId === source.id) state.enrollment = null;
+          for (const entry of state.events) if (entry.accountId === source.id) entry.accountId = owner.id;
+        }
+        event(state, 'Alternate username linked to this account’s keys.', owner.id);
+      }
+      applied.add(migration.id);
+      changed = true;
+    }
+    if (changed) { state.appliedAliasMigrations = [...applied]; await save(state); }
+  }
   return {
     initialize: bootstrap => serial(async () => {
       const old = await storage.get([STORE, 'duoCredentials', 'settings']);
-      if (old[STORE]) { await load(); return; }
+      if (old[STORE]) { await applyAliasMigrations(await load(), bootstrap); return; }
       const accounts = [];
       for (const input of bootstrap.accounts || []) accounts.push(validateAccount(input, accounts));
       const supplied = old.duoCredentials?.length ? old.duoCredentials : bootstrap.credentials;
@@ -49,16 +75,23 @@ export function createService(storage, now = () => Date.now()) {
       })) : [];
       await save({ version: 1, accounts, credentials, settings: { ...defaultSettings, ...old.settings }, enrollment: null, events: [] });
       await storage.remove(['duoCredentials', 'settings', 'enroll']);
+      await applyAliasMigrations(await load(), bootstrap);
     }),
     run: (type, data = {}, sender = {}) => serial(async () => {
       const state = await load();
       if (type === 'STATE') return publicState(state);
       if (type === 'SETTINGS') return { enabled: state.settings.enabled, trustClick: state.settings.trustClick, toast: state.settings.toast };
       if (type === 'SAVE_ACCOUNT') {
-        if (data.id) accountFor(state, data.id);
-        const account = validateAccount(data, state.accounts);
+        const existing = data.id ? accountFor(state, data.id) : {};
+        const account = validateAccount({ ...existing, ...data }, state.accounts);
         state.accounts = [...state.accounts.filter(a => a.id !== account.id), account];
         event(state, 'Account saved.', account.id);
+      } else if (type === 'SAVE_ALIASES') {
+        if (!Array.isArray(data.aliases)) throw new Error('Alternate usernames must be a list.');
+        const account = accountFor(state, data.accountId);
+        const updated = validateAccount({ ...account, aliases: data.aliases }, state.accounts);
+        state.accounts = state.accounts.map(a => a.id === account.id ? updated : a);
+        event(state, 'Alternate usernames saved.', account.id);
       } else if (type === 'TOGGLE_ACCOUNT') {
         const account = accountFor(state, data.accountId);
         account.enabled = !account.enabled;
@@ -131,9 +164,9 @@ export function createService(storage, now = () => Date.now()) {
         if (!arm || arm.expiresAt <= now() || arm.tabId !== sender.tab?.id || arm.origin !== data.origin) return { ok: false, reason: 'Enrollment is not armed for this tab.' };
         const account = accountFor(state, arm.accountId);
         if (!account.enabled) return { ok: false, reason: 'This account is paused.' };
-        if (normalizeUsername(data.username) !== account.username) {
+        if (!accountUsernames(account).includes(normalizeUsername(data.username))) {
           const observed = typeof data.username === 'string' ? data.username.trim().slice(0,128) : '';
-          const reason = observed ? `Duo is enrolling as ${observed}. Edit this account to that exact username, or switch Duo accounts.` : 'Duo did not provide an enrollment username. Use your usual device setup.';
+          const reason = observed ? `Duo is enrolling as ${observed}. Add that alternate username to this account, or switch Duo accounts.` : 'Duo did not provide an enrollment username. Use your usual device setup.';
           state.enrollment.error = reason;
           await save(state);
           return { ok: false, reason };

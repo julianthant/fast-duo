@@ -27,7 +27,7 @@ const ready = (async () => {
 ready.catch(() => {});
 
 const pages = ['src/options.html', 'src/popup.html'].map(path => chrome.runtime.getURL(path));
-const uiTypes = new Set(['STATE', 'SAVE_ACCOUNT', 'TOGGLE_ACCOUNT', 'REMOVE_ACCOUNT', 'SAVE_SETTINGS', 'IMPORT', 'LINK_LEGACY', 'ARM', 'CANCEL', 'CONFIRM', 'DISCARD_PENDING']);
+const uiTypes = new Set(['STATE', 'SAVE_ACCOUNT', 'SAVE_ALIASES', 'TOGGLE_ACCOUNT', 'REMOVE_ACCOUNT', 'SAVE_SETTINGS', 'IMPORT', 'LINK_LEGACY', 'ARM', 'CANCEL', 'CONFIRM', 'DISCARD_PENDING']);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const fromUI = sender.id === chrome.runtime.id && pages.includes(sender.url);
   const fromDuo = sender.id === chrome.runtime.id && isDuoOrigin(sender.url);

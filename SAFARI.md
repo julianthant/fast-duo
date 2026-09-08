@@ -34,7 +34,7 @@ Xcode projects are also generated inside those output directories. Builds contai
 
 Safari stores keys in the extension background's IndexedDB database. Content scripts do not get the keys. Chrome continues using local extension storage restricted to trusted contexts. Safari migration copies and verifies old extension data before removing the old copy; a conflict or failed copy blocks startup and preserves the data.
 
-Safari and Chrome keep independent account state and signature counters. Changes in one browser do not sync to the other. Prefer enrolling separate devices per browser when your organization's policy permits it. Guided enrollment uses an existing Duo verification method and the exact username provided by Duo.
+Safari and Chrome keep independent account state and signature counters. Changes in one browser do not sync to the other. Prefer enrolling separate devices per browser when your organization's policy permits it. Manage → Alternate usernames links additional names to the same account and keys, with shared counters. Duo must recognize those keys. Guided enrollment accepts an exact primary or alternate username and uses an existing Duo verification method.
 
 ## Distribution
 

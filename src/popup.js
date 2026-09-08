@@ -8,7 +8,7 @@ async function render() {
   const list = document.getElementById('popupAccounts'); list.replaceChildren();
   for (const account of state.accounts) {
     const item=document.createElement('li'); const name=document.createElement('span'); const badge=document.createElement('span');
-    name.textContent=account.username;
+    name.textContent=[account.username, ...(account.aliases || [])].join(' / ');
     const ready=state.credentials.some(c=>c.accountId===account.id && c.status==='ready');
     badge.textContent=!account.enabled?'Paused':ready?'Connected':'Needs setup'; badge.className='badge'+(ready&&account.enabled?' ready':'');
     item.append(name,badge);list.append(item);

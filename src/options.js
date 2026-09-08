@@ -35,7 +35,7 @@ function render() {
     const ready = keys.some(c => c.status === 'ready');
     const status = !a.enabled ? 'Paused' : ready ? 'Connected' : keys.length ? 'Finish in Duo' : 'Needs setup';
     const kinds = [...new Set(keys.map(c => c.transport === 'usb' ? 'Security key' : 'Platform key'))].join(' · ') || 'No key connected yet';
-    return `<article class="account"><div class="account-head"><span class="avatar" aria-hidden="true">${escape(a.username.slice(0,2))}</span><div class="account-identity"><h3>${escape(a.label)}</h3><p>${escape(a.username)}</p></div><span class="badge ${a.enabled && ready ? 'ready' : ''}">${status}</span></div><div class="account-bottom"><span class="key-types"><img src="icons/key-round.svg" alt="">${escape(kinds)}</span><button class="quiet small" data-edit="${escape(a.id)}" aria-label="${ready ? 'Manage' : 'Set up'} ${escape(a.username)}">${ready ? 'Manage' : 'Set up'} <span aria-hidden="true">↗</span></button></div></article>`;
+    return `<article class="account"><div class="account-head"><span class="avatar" aria-hidden="true">${escape(a.username.slice(0,2))}</span><div class="account-identity"><h3>${escape(a.label)}</h3><p>${escape(a.username)}</p>${a.aliases?.length ? `<p class="account-aliases">Also matches: ${escape(a.aliases.join(', '))}</p>` : ''}</div><span class="badge ${a.enabled && ready ? 'ready' : ''}">${status}</span></div><div class="account-bottom"><span class="key-types"><img src="icons/key-round.svg" alt="">${escape(kinds)}</span><button class="quiet small" data-edit="${escape(a.id)}" aria-label="${ready ? 'Manage' : 'Set up'} ${escape(a.username)}">${ready ? 'Manage' : 'Set up'} <span aria-hidden="true">↗</span></button></div></article>`;
   }).join('') : '<p class="empty">No accounts yet. Add your Duo username, then follow the guided setup.</p>';
   $('events').innerHTML = state.events.length ? state.events.map(e => {
     const a = state.accounts.find(a => a.id === e.accountId);
@@ -51,6 +51,7 @@ function render() {
 function renderConnection() {
   const account = state.accounts.find(a => a.id === selectedId);
   $('connection').hidden = !account;
+  $('aliasForm').hidden = !account;
   $('accountActions').hidden = !account;
   $('advanced').hidden = !account;
   if (!account) { $('captureState').hidden = true; $('pendingKeys').innerHTML = ''; return; }
@@ -76,6 +77,7 @@ function openEditor(id) {
   $('editDetails').textContent = 'Edit account details';
   document.querySelector('.setup-panel').setAttribute('aria-labelledby', 'editorTitle');
   $('username').value = account?.username || '';
+  $('aliases').value = (account?.aliases || []).join(', ');
   $('label').value = account?.label || '';
   $('loginUrl').value = account?.loginUrl || '';
   $('saveAccount').textContent = account ? 'Save changes' : 'Create account';
@@ -110,7 +112,16 @@ $('accountForm').addEventListener('submit', event => {
     const username = $('username').value.trim().toLowerCase();
     await mutate('SAVE_ACCOUNT',{ id:selectedId, username, label:$('label').value, loginUrl:$('loginUrl').value, enabled:state.accounts.find(a => a.id === selectedId)?.enabled ?? true });
     openEditor(state.accounts.find(a => a.username === username).id);
-    message('Account saved. Continue with Duo setup below.');
+    message('Account saved. Manage shared usernames and keys below.');
+  });
+});
+$('aliasForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void action($('saveAliases'), async () => {
+    const aliases = $('aliases').value.split(',').map(name => name.trim()).filter(Boolean);
+    await mutate('SAVE_ALIASES', { accountId: selectedId, aliases });
+    $('aliases').value = (state.accounts.find(a => a.id === selectedId)?.aliases || []).join(', ');
+    message('Alternate usernames saved. They share this account’s keys.');
   });
 });
 $('pause').addEventListener('click', () => action($('pause'), () => mutate('SAVE_SETTINGS', {enabled:!state.settings.enabled})));

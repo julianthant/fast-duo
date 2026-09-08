@@ -125,3 +125,95 @@ test('failed registration reports the observed username and unconfirmed keys can
   assert.equal((await service.run('STATE')).credentials.length,1);
   await assert.rejects(service.run('DISCARD_PENDING',{credentialId:fixture.credentialId}),/unconfirmed/);
 });
+
+const aliasBootstrap = { aliasMigrations: [{ id: 'fixture-alias-1', ownerUsername: 'juzaw', username: 'jzaw' }] };
+test('personal migration merges the placeholder once, preserving keys and counters', async () => {
+  const { service, storage } = await setup();
+  const before = storage.raw().autopilotV1.credentials;
+  await service.initialize(aliasBootstrap);
+  const state = await service.run('STATE');
+  assert.equal(state.accounts.length, 1);
+  assert.deepEqual(state.accounts[0].aliases, ['jzaw']);
+  assert.deepEqual(storage.raw().autopilotV1.credentials, before);
+  await service.run('SAVE_ALIASES', { accountId: 'a', aliases: [] });
+  await service.initialize(aliasBootstrap);
+  assert.deepEqual((await service.run('STATE')).accounts[0].aliases, [], 'Removed aliases must not return on startup');
+  await service.run('REMOVE_ACCOUNT', { accountId: 'a' });
+  await service.initialize(aliasBootstrap);
+  assert.equal((await service.run('STATE')).accounts.length, 0);
+});
+
+test('migration preserves keys enrolled on the old profile and cancels its capture', async () => {
+  const { service, storage } = await setup();
+  await service.run('ARM', arm);
+  await service.run('ENROLL', enrollment, sender);
+  await service.run('ARM', arm);
+  const before = storage.raw().autopilotV1.credentials;
+  await service.initialize(aliasBootstrap);
+  const state = storage.raw().autopilotV1;
+  assert.equal(state.enrollment, null);
+  assert.equal(state.accounts.length, 1);
+  assert.deepEqual(state.credentials, before.map(c => ({ ...c, accountId: 'a' })));
+});
+
+test('migration never recreates a removed owner and public setup has no automatic aliases', async () => {
+  const { service } = await setup();
+  await service.run('REMOVE_ACCOUNT', { accountId: 'a' });
+  await service.initialize(aliasBootstrap);
+  assert.deepEqual((await service.run('STATE')).accounts.map(a => a.username), ['jzaw']);
+  const clean = createService(memory());
+  await clean.initialize({ accounts: [] });
+  assert.equal((await clean.run('STATE')).accounts.length, 0);
+});
+
+test('migration conflict or failed save preserves the original profiles', async () => {
+  const { service, storage } = await setup();
+  const before = storage.raw();
+  const save = storage.set;
+  storage.set = async () => { throw new Error('disk full'); };
+  await assert.rejects(service.initialize(aliasBootstrap), /disk full/);
+  assert.deepEqual(storage.raw(), before);
+  storage.set = save;
+  await service.initialize(aliasBootstrap);
+  assert.equal((await service.run('STATE')).accounts.length, 1);
+  const other = await service.run('SAVE_ACCOUNT', { username: 'other', aliases: ['third'] });
+  const prior = storage.raw();
+  await assert.rejects(service.initialize({ aliasMigrations: [{ id: 'conflict', ownerUsername: 'juzaw', username: 'third' }] }), /another account/);
+  assert.deepEqual(storage.raw(), prior);
+  assert.equal(other.accounts.length, 2);
+});
+
+test('primary and alternate logins use the same durable key counter', async () => {
+  const { service, storage } = await setup();
+  await service.initialize(aliasBootstrap);
+  const results = await Promise.all(['juzaw', 'jzaw'].map(username => service.run('SIGN', { ...request, usernames: [username] }, sender)));
+  assert.ok(results.every(r => r.ok && r.credentialId === fixture.credentialId));
+  const counters = results.map(r => new DataView(Uint8Array.from(atob(r.authenticatorData), c => c.charCodeAt(0)).buffer).getUint32(33));
+  assert.equal(counters[1], counters[0] + 1);
+  assert.equal(storage.raw().autopilotV1.credentials.length, 1);
+  assert.equal(storage.raw().autopilotV1.credentials[0].signCount, counters[1]);
+  await service.run('TOGGLE_ACCOUNT', { accountId: 'a' });
+  assert.equal((await service.run('SIGN', { ...request, usernames: ['jzaw'] }, sender)).ok, false);
+});
+
+test('saving/removing aliases preserves keys; account edits preserve aliases', async () => {
+  const { service, storage } = await setup();
+  await assert.rejects(service.run('SAVE_ALIASES', { accountId: 'a', aliases: ['jzaw'] }), /another account/);
+  await service.run('SAVE_ALIASES', { accountId: 'a', aliases: ['other-login'] });
+  await service.run('SAVE_ACCOUNT', { id: 'a', username: 'juzaw', label: 'My account' });
+  assert.deepEqual((await service.run('STATE')).accounts.find(a => a.id === 'a').aliases, ['other-login']);
+  const before = storage.raw().autopilotV1.credentials;
+  await assert.rejects(service.run('SAVE_ALIASES', { accountId: 'a' }), /must be a list/);
+  await service.run('SAVE_ALIASES', { accountId: 'a', aliases: [] });
+  assert.deepEqual(storage.raw().autopilotV1.credentials, before);
+  assert.equal((await service.run('SIGN', { ...request, usernames: ['other-login'] }, sender)).ok, false);
+});
+
+test('guided enrollment accepts a linked alias, but rejects unlinked usernames', async () => {
+  const { service } = await setup();
+  await service.initialize(aliasBootstrap);
+  await service.run('ARM', { ...arm, accountId: 'a' });
+  assert.equal((await service.run('ENROLL', { ...enrollment, username: 'unknown' }, sender)).ok, false);
+  assert.equal((await service.run('ENROLL', enrollment, sender)).ok, true);
+  assert.ok((await service.run('STATE')).credentials.every(c => c.accountId === 'a'));
+});

@@ -32,3 +32,31 @@ test('imports reject partial invalid or duplicate sets',()=>{
   assert.equal(validateCredentials([c]).length,1);
   for(const input of [[c,{...c,privateKey:''}],[c,c],[],[{...c,signCount:-1}]])assert.throws(()=>validateCredentials(input));
 });
+
+test('alternate usernames normalize, deduplicate, and cannot overlap another account', () => {
+  const owner = validateAccount({ id: 'a', username: 'juzaw', aliases: [' JZAW ', 'jzaw', 'JUZAW'] });
+  assert.deepEqual(owner.aliases, ['jzaw']);
+  for (const input of [
+    { username: 'jzaw' }, { username: 'other', aliases: ['jzaw'] },
+    { username: 'other', aliases: ['juzaw'] }, { username: 'other', aliases: ['bad username'] },
+    { username: 'other', aliases: 'jzaw' }, { username: 'other', aliases: Array.from({ length: 21 }, (_, i) => 'user' + i) },
+  ]) assert.throws(() => validateAccount(input, [owner]));
+});
+
+test('an alias and primary username share the same key without overriding the server', () => {
+  const linked = { ...state, accounts: [{ ...accounts[0], aliases: ['jzaw'] }] };
+  for (const usernames of [['juzaw'], [' JZAW '], ['juzaw', 'jzaw']]) {
+    assert.equal(selectCredential(linked, { ...req, usernames, allowCredentials: [a.credentialId] }).credential, a);
+    assert.equal(selectCredential(linked, { ...req, usernames, allowCredentials: [] }).credential, a);
+    assert.ok(selectCredential(linked, { ...req, usernames, allowCredentials: [b.credentialId] }).reason);
+  }
+  assert.ok(selectCredential(linked, { ...req, usernames: ['jzaw', 'unknown'] }).reason);
+  assert.ok(selectCredential(linked, { ...req, usernames: ['jza'] }).reason);
+});
+
+test('paused aliases and corrupt duplicate ownership never select a key', () => {
+  const linked = { ...state, accounts: [{ ...accounts[0], aliases: ['jzaw'], enabled: false }] };
+  assert.ok(selectCredential(linked, { ...req, usernames: ['jzaw'], allowCredentials: [a.credentialId] }).reason);
+  linked.accounts = [{ ...accounts[0], aliases: ['jzaw'] }, accounts[1]];
+  assert.ok(selectCredential(linked, { ...req, usernames: ['jzaw'], allowCredentials: [a.credentialId] }).reason);
+});

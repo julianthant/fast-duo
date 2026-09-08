@@ -12,7 +12,7 @@ its included INSTALL.md. Both browsers use the same personal enrollment flow.
 7. In that Duo tab, choose Add a device and the selected type. Autopilot creates your key locally when Duo starts registration. Capture expires after ten minutes.
 8. Finish in Duo. Once Duo confirms the device was added, confirm in Autopilot. A test login that requests the captured key also activates it automatically.
 
-Repeat for each account. Your organization must allow the chosen device type and self-service device management. Duo may supply an email address as its registration username; use that exact name in Autopilot. The enrollment cannot skip your organization's existing authentication requirements.
+Repeat for each separate key set. To reuse one account’s keys under another Duo username, open Manage → Alternate usernames, enter the names separated by commas, and save. Aliases share keys and counters; Duo must already accept the key for those usernames. Your organization must allow the chosen device type and self-service device management. Duo may supply an email address as its registration username; use that exact name in Autopilot. The enrollment cannot skip your organization's existing authentication requirements.
 
 Use the toolbar icon to pause or open settings. Keys stay in local extension storage. There is no cloud synchronization, analytics, or automatic backup. Removing the extension removes its browser storage; keep another Duo method available.
 
