@@ -2,9 +2,8 @@
 
 Requires Safari 18 or later on macOS 13 or later. This build is for Mac; it does not install on iPhone or iPad.
 
-This describes the owner's local installation for their own Duo account. All
-rights reserved; no general reuse permission is granted. See LICENSE and
-THIRD_PARTY_NOTICES.md for the original and third-party material.
+Use only your own Duo account. This project is licensed under the MIT License;
+see LICENSE. Third-party material retains its licenses in THIRD_PARTY_NOTICES.md.
 
 ## Install locally
 
@@ -42,9 +41,9 @@ Safari and Chrome keep independent account state and signature counters. Changes
 
 ## Clean package
 
-The clean ZIP contains no personal credentials. Its filename does not grant
-redistribution permission. Local installation requires enabling this development
-build and enrolling the owner's keys. A standard installation without developer
+The clean ZIP contains no personal credentials. Include LICENSE and
+THIRD_PARTY_NOTICES.md when redistributing it. Local installation requires
+enabling this development build and enrolling your own keys. A standard installation without developer
 settings requires Apple Developer signing and notarization or App Store
 distribution; this project has not been published.
 

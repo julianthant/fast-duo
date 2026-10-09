@@ -120,6 +120,5 @@ counter conflicts when used simultaneously.
 
 ## License
 
-All rights reserved; no general reuse permission is granted for the original
-code or documentation. See [LICENSE](LICENSE). Bundled icons retain their
-separate licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Licensed under the [MIT License](LICENSE). Bundled icons retain their separate
+licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

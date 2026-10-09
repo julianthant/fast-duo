@@ -3,8 +3,7 @@
 These steps are for Chrome 140+. Safari users need the Safari app package and
 its included INSTALL.md. Both browsers use the same personal enrollment flow.
 
-These instructions describe the owner's local installation. All rights reserved;
-no general reuse permission is granted. See LICENSE and THIRD_PARTY_NOTICES.md.
+Licensed under the MIT License. See LICENSE and THIRD_PARTY_NOTICES.md.
 Use only your own Duo account on your own machine.
 
 1. Unzip `duo-autopilot-share.zip` into a permanent folder.

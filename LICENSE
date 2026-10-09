@@ -1,14 +1,21 @@
-Copyright (c) 2026 julianthant. All rights reserved.
+MIT License
 
-No general license is granted to use, modify, distribute, sublicense, or
-incorporate this project's original code or documentation into other works.
-Obtain the copyright holder's written permission for those activities.
+Copyright (c) 2026 julianthant
 
-This notice does not restrict rights granted by GitHub's Terms of Service
-or rights available under applicable law.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Third-party material retains its own license. See THIRD_PARTY_NOTICES.md.
-This notice does not replace or narrow those third-party licenses.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-The software is provided "as is", without warranties of any kind, to the
-extent permitted by applicable law.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
