@@ -1,6 +1,7 @@
 # Secrets — NEVER commit. Holds the Duo-registered EC P-256 private keys.
 credentials/
 *.key
+*.zip
 .env
 
 # Node / build

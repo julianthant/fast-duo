@@ -1,120 +1,124 @@
-# Duo Autopilot
+# fast-duo
 
-A standalone Manifest V3 Chrome and Safari extension with separate Duo accounts, exact key
-matching, a toolbar popup, and guided personal enrollment. Runtime is plain local
-JavaScript; no build or server is required.
+A local software WebAuthn authenticator for Duo, packaged as a Manifest V3
+browser extension. After guided enrollment, it answers matching security-key
+requests with keys stored in your browser profile.
 
-## Your installation
+The extension appears in the browser as **Duo Autopilot**. Its runtime is plain
+JavaScript with no server, cloud synchronization, analytics, or external runtime
+libraries. Chrome is the main setup path; Safari packaging is also included.
 
-Load `/Users/julianhein/Projects/duo-autopilot` from `chrome://extensions` using
-Developer mode → Load unpacked. If it is already loaded, click Reload on its card,
-then reopen Extension options and refresh any open Duo pages.
+## Features
 
-The private `bootstrap.json` assigns the two existing credentials to **juzaw**,
-with **jzaw** as an alternate username using the same keys. On the next extension
-reload, a one-time migration merges the old separate profile into that account.
-Existing keys and counters are preserved; any enrollment capture on the old
-profile is cancelled. Removing an alias or account later does not restore it.
+- **Guided enrollment:** select a Duo tab, explicitly start capture, and finish
+  device registration in Duo. Capture is limited to one registration and expires
+  after ten minutes.
+- **Account-aware matching:** Duo's requested credential IDs determine which key
+  can answer. Exact usernames resolve ambiguity; unknown or conflicting requests
+  fall back to the browser's normal authenticator.
+- **Alternate usernames:** link names that Duo already accepts for the same keys.
+  Aliases share one account's credentials and counters.
+- **Local controls:** inspect account status, pause all authentication or a single
+  account, and remove local keys through settings or the toolbar popup.
 
-To share an account's keys with another username, open **Manage → Alternate
-usernames**, enter the additional usernames separated by commas, and choose
-**Save usernames**. Every name in the group uses the same key records and counters.
-A username can belong to only one account. Remove a name from this list to stop
-matching it without deleting keys. Pausing the account pauses all its usernames.
+## Get started
 
-Aliases route existing keys; Duo must still recognize the requested credential.
-An alias cannot make a key registered to an unrelated Duo identity valid. For a
-separate key set, create a separate account and follow guided enrollment.
+You need Chrome 140 or later, Node.js and npm for packaging, and access to your
+own Duo account. Your organization must allow the chosen device type and
+self-service device management. Keep an existing Duo verification method
+available during enrollment.
 
-## Safari
+Clone or download the source, then run from the project folder:
 
-Run `npm run package:safari:personal` for your private Safari app, including the
-two existing keys for **juzaw**, also matched by the alternate username **jzaw**. Open
-`dist/safari-personal/Duo Autopilot.app`, then enable it in Safari Settings.
-This local build requires Allow unsigned extensions and permission for your Duo
-site. See [SAFARI.md](SAFARI.md) for installation and clean distribution builds.
+```sh
+npm ci
+npm run package
+```
 
-Chrome and Safari keep separate storage and counters; changes do not sync.
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Choose **Load unpacked** and select `dist/duo-autopilot`. Keep that folder in
+   place. The clean package starts with no accounts or keys.
+3. In the setup page, add your exact Duo username and an optional sign-in link.
+4. Sign in normally. In Duo, open **Other options → Manage devices** and verify
+   with an existing method.
+5. In Autopilot, refresh the Duo tab list, select that tab and the device type,
+   then choose **Start capture**.
+6. In the selected Duo tab, add the device. Finish registration in Duo, then
+   confirm it in Autopilot. A later login requesting that exact key also
+   activates it automatically.
 
-## Account matching
+Use the toolbar icon to pause authentication or open settings. To link another
+username to the same keys, open **Manage → Alternate usernames**. This requires
+Duo to recognize those keys for both names.
 
-- Only HTTPS pages on duosecurity.com and its subdomains are eligible.
-- The browser-provided sender origin must match the signed origin.
-- Duo's credential allowlist is authoritative. A detected username can narrow it,
-  never override it. Multiple matching accounts do not silently choose the first. Primary and alternate
-  usernames resolve to the same account; visible names identifying different accounts defer.
-- An empty allowlist requires an exact detected account and a ready discoverable
-  credential with a user handle. Missing or ambiguous identity falls through to
-  the browser's normal authentication.
-- Username detection reads visible username inputs and labeled lines such as
-  `Username: juzaw`. Arbitrary page text and SSO pages on other domains are not read.
-- Enrollment is explicitly armed for one account, tab, origin and ten-minute
-  window. The registration username must match its primary or alternate usernames. A single capture disarms it.
-- A captured key remains pending until the user confirms Duo accepted it or a
-  later Duo request includes that exact ID. A signed assertion is not logged as
-  proof that the application login succeeded.
+See [INSTALL.md](INSTALL.md) for the complete enrollment flow and
+[SAFARI.md](SAFARI.md) for Safari requirements and packaging. Chrome and Safari
+keep independent storage and counters; use separately enrolled keys per browser
+profile.
 
-Not every Duo page exposes a supported username field. Current routing has unit
-and mocked-browser verification; current live Duo markup and new-account server
-acceptance have not been verified. Site-specific layout changes may require a
-small detector update. Organization policies may prevent software-key enrollment.
+## Architecture and engineering choices
 
-## Share with others
+WebAuthn requests travel from a page hook through an isolated content script to
+the extension background service. Signing happens in the background; page
+scripts receive public ceremony results, never private keys.
 
-Run `npm run package`. Share **only** `dist/duo-autopilot-share.zip`, or give someone
-the unpacked `dist/duo-autopilot` folder. The packaging allowlist includes runtime
-files, icons, a clean bootstrap and installation instructions. It excludes your
-keys, usernames, test profiles, screenshots and development dependencies.
+| Component | Responsibility |
+| --- | --- |
+| [Page hook](src/inpage.js) and [content bridge](src/content.js) | Intercept Duo ceremonies and return WebAuthn responses across browser execution contexts. |
+| [Account model](src/accounts.js) | Validate imports and resolve exact credential, account, and username matches. |
+| [Service](src/service.js) | Coordinate enrollment, serialize state changes, and persist counters before releasing signed responses. |
+| [Cryptography](src/crypto.js) | Generate P-256 keys and build registration and assertion data with the browser's Web Crypto API. |
+| [Private storage](src/private-storage.js) | Restrict Chrome storage to trusted extension contexts and use background-owned IndexedDB on Safari. |
 
-Each person starts empty and enrolls their own key. See [INSTALL.md](INSTALL.md).
-One-click installation and automatic updates require a Chrome Web Store listing
-and approval; this project has not been submitted or published.
+Content scripts and host permissions are scoped to
+`https://*.duosecurity.com/*`. The background checks the browser-observed origin
+against the requested origin and Duo relying-party ID. Enrollment is bound to
+one account, tab, origin, and expiry; a successful capture disarms it even when
+requests arrive concurrently.
 
-## Local storage and removal
-
-Private keys remain in trusted extension contexts. Chrome 140+ uses
-`chrome.storage.local` with `TRUSTED_CONTEXTS` access. Safari 18+ uses IndexedDB
-owned by the extension background because Safari cannot restrict `storage.local`.
-Safari migration verifies the private copy before deleting old shared storage;
-conflicts or failed writes block startup without discarding either copy. Content scripts receive only per-request public
-results and non-secret settings. Keys never appear in page scripts, UI responses,
-activity history, or share archives. Your personal credential file is owner-readable
-only, and both it and personal bootstrap are Git-ignored.
-
-The master pause and per-account pause take effect on new requests. Removing an
-account deletes its local keys; remove the corresponding device in Duo separately.
-Enrollment needs an existing verification method. Keep that method available.
-An unlocked profile can use its connected accounts. There is no encryption beyond
-your browser/OS storage, no cloud sync, and no backup service. Use separate enrolled
-keys per browser profile where possible; imported copies do not share counters.
+A captured key remains pending until Duo's registration is confirmed or Duo
+requests that exact credential. Storage migration verifies the private copy
+before deleting old data and preserves both copies if a write fails or data
+conflicts.
 
 ## Development and verification
 
-```
-npm ci
-npm run setup # creates clean bootstrap only if missing
+```sh
 npm test
 npm run lint
 npm run test:coverage
 npm run package
 ```
 
-Crypto tests generate throwaway keys. Core tests cover account isolation, allowlist
-matching, ambiguity, tab/origin/expiry checks, one-shot capture, counters, storage
-failure, migration, removal, imports, shared username matching, alias collisions and counter continuity. Browser smoke fixtures use intercepted
-HTTPS responses and never contact Duo. Browser artifacts remain local under
-`verification/`; `scripts/browser-flow.js` is run through playwright-cli with an
-isolated persistent context and the extension loaded. `scripts/browser-alias-flow.js`
-checks alias enrollment and assertions for both names using the same throwaway key.
+Tests generate throwaway keys and use synthetic identities. They cover signature
+verification, tamper rejection, account isolation, exact matching, concurrent
+counter updates, one-shot enrollment, storage failures, and migration. Mocked
+browser fixtures exercise enrollment, the WebAuthn bridge, and alias matching
+without contacting a Duo server.
 
-## Provenance
+[VERIFICATION.md](VERIFICATION.md) describes the checks and how to run them.
+Mocked checks do not establish live Duo server acceptance or compatibility with
+every production page layout. Coverage of imported modules does not represent
+complete UI coverage.
 
-Based on `hr-automation-rebuild/duo-autopilot`, source checkout HEAD
-`9018540f564e82be8db972d4509fe3e3386fdbba`. The original crypto implementation and
-counter helper are preserved. This project does not modify or depend at runtime
-on the HR repositories. Functional icons use Lucide; see THIRD_PARTY_NOTICES.md.
+## Use and security
 
-References: [Duo enrollment](https://guide.duo.com/universal-enrollment),
-[Chrome installation](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked),
-[Chrome distribution](https://developer.chrome.com/docs/extensions/how-to/distribute),
-[WebAuthn](https://www.w3.org/TR/webauthn-2/).
+Use only your own Duo account on your own machine, where your organization's
+rules permit software authenticators and automation. This is an independent
+project with no Cisco Duo or institutional affiliation.
+
+Automatic signing removes an interactive MFA step. Anyone using your unlocked
+browser profile can authenticate with its connected keys. Keys rely on browser
+and OS storage protection; there is no additional encryption, cloud backup, or
+synchronization. Never share enrolled credentials or a personal installation
+folder.
+
+Pausing keeps your keys. Removing an account deletes its local keys; remove its
+device registration in Duo separately. Keep another Duo method available before
+removing the extension. Imported copies have independent counters and can cause
+counter conflicts when used simultaneously.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Bundled icons retain their separate
+licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

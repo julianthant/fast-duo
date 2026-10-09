@@ -1,9 +1,9 @@
 {
   "private": true,
   "type": "module",
-  "name": "duo-autopilot",
+  "name": "fast-duo",
   "version": "0.3.0",
-  "description": "Account-aware Duo extension with guided personal enrollment.",
+  "description": "A local software WebAuthn authenticator for your own Duo account.",
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.mjs",
@@ -19,5 +19,6 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.12.0",
     "lucide-static": "^1.42.0"
-  }
+  },
+  "license": "MIT"
 }

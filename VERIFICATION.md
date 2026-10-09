@@ -1,44 +1,51 @@
-# Verification — 0.3.0
+# Verification
 
-Verified locally on September 7, 2026, using isolated full Chromium contexts.
+Run the offline gates from the project root:
 
-| Check | Result |
-| --- | --- |
-| Existing cryptographic self-test | 43 passed, 0 failed |
-| Account, service and username regression tests | 33 passed, 0 failed |
-| ESLint recommended | Passed with no rule exemptions |
-| Core coverage | 99.06% lines; 88.93% branches; 100% functions across imported core modules |
-| Personal bootstrap | Both existing credentials assigned to juzaw; jzaw has no real credential yet |
-| Browser enrollment fixture | Account creation, Duo tab selection, one-shot capture, pending state, assertion bridge and automatic activation passed |
-| Clean share package | Fresh browser starts with zero accounts and keys; guided flow passes using throwaway keys |
-| Toolbar popup | Connected account rendering and pause/resume passed |
-| UI | Light/dark inspected; no overflow at 375, 768, 1024 and 1440 pixels |
-| Contrast | Light body 13.74:1; light helper 5.84:1; light button 6.70:1; dark equivalents above 8.6:1 |
-| Design detector | No findings |
-| Browser console | No errors or warnings in verified contexts |
-| Share archive | Exact 25-file allowlist; every decompressed entry checked for personal private keys and usernames; none found |
-| Cleanup | Owned browsers closed and isolated profiles removed |
+```sh
+npm ci
+npm test
+npm run lint
+npm run test:coverage
+npm run package
+```
 
-Core coverage does not represent UI-script coverage. Username extraction runs in
-VM fixtures; the content-script, worker, page bridge and UI integration run in
-browser fixtures. Browser screenshots and test output are local, ignored files
-under `verification/`.
+The crypto self-test generates throwaway keys and checks byte encoding,
+registration, assertions, signature verification, and tamper rejection.
+Account and service tests cover exact matching, alias collisions, account
+isolation, counter persistence, storage failures, migration, removal, imports,
+and opt-in one-shot enrollment bound to an account, tab, origin, and expiry.
+Username extraction uses synthetic document fixtures.
 
-The fixture HTTPS host is fulfilled by Playwright routing. No Duo server was
-contacted and no live account was enrolled. Current production Duo page layouts,
-organization policy acceptance, and end-to-end real logins remain unverified.
-The jzaw account still requires its owner's real enrollment through Duo.
+For browser checks, use playwright-cli with an isolated Chromium profile and
+the clean extension loaded. Block outbound requests and fulfill the fixture
+host through Playwright routing.
 
-Chrome Web Store publication is a separate deployment and has not occurred.
-No changes were pushed or integrated into the HR repositories.
+1. Open `src/options.html` through the extension URL. Verify that the clean
+   bootstrap starts with no accounts or keys.
+2. Add the synthetic account `demouser` and leave its editor open. Run
+   `scripts/browser-flow.js` through `playwright-cli run-code --filename=...`.
+3. In a fresh profile, add `demo-user`, save `demouser` as an alternate username,
+   and leave its editor open. Run `scripts/browser-alias-flow.js` the same way.
+4. Inspect pending and connected states, pause behavior, the help page, and the
+   popup. Close the owned browser and remove its disposable profile.
 
-## Logo correction
+Both scripts generate keys locally and intercept HTTPS on the fixture Duo
+host. They verify enrollment, the public response bridge, exact credential
+selection, automatic activation, and shared alias use without a Duo server.
+Keep profiles, screenshots, and logs outside the committed tree.
 
-All four PNG sizes were decoded to verify RGBA format, exact square dimensions,
-zero alpha at each corner, and a nontransparent bounding box reaching all four
-canvas edges (no external padding). Settings and popup renders were inspected in
-light/dark contexts; the logo has no theme filter. ESLint and package verification
-passed. Authentication code was unchanged; prior functional results above are
-reused for this asset-only correction.
+Inspect every decompressed clean-package entry. The package must contain an
+empty bootstrap, LICENSE, third-party notices, installation instructions, and
+only the runtime allowlist. Personal builds are private and are never release
+artifacts.
 
-After-shot: `verification/logo-transparency.png`.
+Before publication, scan the exact committed export, its commit metadata, and
+any proposed release artifacts. Explain each synthetic fixture finding
+individually; do not suppress an entire test directory. Pin the commit and tree
+SHA reviewed by the owner. Any change invalidates that publication scan.
+
+Unit coverage describes imported modules, not complete browser behavior.
+Mocked checks do not verify live Duo page layouts, server acceptance, successful
+application logins, or institutional policy. Browser-store publication and
+visibility changes are separate owner decisions.

@@ -112,7 +112,7 @@ async function run() {
   {
     const rpId = "duosecurity.com";
     const origin = "https://api-duo1.duosecurity.com";
-    const signCount = 100221;
+    const signCount = 0x01020304; // Synthetic counter exercises every big-endian byte.
     const challenge = crypto.getRandomValues(new Uint8Array(32));
 
     const keyPair = await crypto.subtle.generateKey(

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Duo Autopilot",
   "version": "0.3.0",
-  "description": "Account-aware Duo authentication with guided personal setup.",
+  "description": "A local software WebAuthn authenticator for your own Duo account.",
   "permissions": [
     "storage"
   ],

@@ -247,9 +247,7 @@
     };
   }
 
-  // CRM: Duo gates the security-key factor behind
-  // isExternalCTAP2SecurityKeySupported(). Real Chrome usually supports it, but
-  // force true defensively so CRM reliably offers/auto-fires the ceremony.
+  // Advertise the software authenticator to Duo’s security-key capability check.
   try {
     if (window.PublicKeyCredential) {
       window.PublicKeyCredential.isExternalCTAP2SecurityKeySupported = () => Promise.resolve(true);
