@@ -30,6 +30,6 @@ Chrome 140+ is the main installation path. Safari 18+ on macOS has an Xcode pack
 
 ## Repository snapshot
 
-The public history contains **46 commits**, with commit dates spanning **June 5 through October 12, 2026**. This is a repository snapshot, not the project's development duration; the count will change as work lands.
+47 commits from June 5 to October 12, 2026.
 
 Real HR data lives outside this repository. Personal credentials and browser profiles are excluded from source and clean share packages.
